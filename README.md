@@ -180,6 +180,9 @@ Confirmed quirk entries:
 
 To add support for your camera, see [contrib/hw/README.md](contrib/hw/README.md).
 
+For the full compatibility tier table and per-model notes, see
+[docs/hardware-compatibility.md](docs/hardware-compatibility.md).
+
 ## Test Results (Ubuntu 24.04.4 LTS)
 
 End-to-end acceptance test — CCX20, USB webcam `/dev/video2`, GREY format, CPU-only ONNX.
@@ -217,6 +220,7 @@ Bugs fixed during testing: [DeviceAllow glob](docs/STATUS.md#bugs-found-during-t
 - [ADR 005 — PAM Module and System Bus Migration](docs/decisions/005-pam-system-bus-migration.md)
 - [ADR 006 — IR Emitter Integration](docs/decisions/006-ir-emitter-integration.md)
 - [ADR 007 — Ubuntu Packaging](docs/decisions/007-ubuntu-packaging.md)
+- [ADR 008 — Hardware Compatibility Detection](docs/decisions/008-hardware-compatibility-detection.md)
 
 ## License
 

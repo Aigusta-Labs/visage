@@ -91,15 +91,21 @@ Items marked ✅ have been verified; items marked ⬜ require hardware not avail
 
 ### High Priority (not blockers for v0.1 but ship before public announcement)
 
-4. **Rate limiting** — no limit on failed face attempts (see threat-model.md)
+4. ~~**Rate limiting**~~ — **DONE** (v0.1.1, commit c74cf33) — 5 failures/60s sliding window → 5-min lockout
 
-5. **NixOS packaging** — AEGIS overlay integration; listed as Tier 1 in distribution-strategy.md
+5. ~~**Hardware compatibility docs and IPU6 detection**~~ — **DONE** (commit 7d0f9e1)
+   - `visage discover` now shows kernel driver per device; warns on IPU6 with explanation
+   - `docs/hardware-compatibility.md` created with tier table, laptop examples, emitter process
+   - README hardware section rewritten with UVC/IPU6 tier table
+   - ADR 008 documents decision rationale and trade-offs
+
+6. **NixOS packaging** — AEGIS overlay integration; listed as Tier 1 in distribution-strategy.md
    - Path: `packaging/nix/` (not yet created)
    - Blocked on: deciding whether to package via AEGIS overlay or nixpkgs PR
 
-6. **GitHub release with pre-built `.deb`** — necessary for users without Rust toolchain
+7. **GitHub release with pre-built `.deb`** — necessary for users without Rust toolchain
 
-7. **Debian changelog** — required for Launchpad PPA submission; not present
+8. **Debian changelog** — required for Launchpad PPA submission; not present
 
 ### Post-v0.1 (v0.2 or v3)
 
