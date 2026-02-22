@@ -7,11 +7,13 @@ use tracing_subscriber::EnvFilter;
 mod config;
 mod dbus_interface;
 mod engine;
+mod rate_limiter;
 mod store;
 
 use config::Config;
 use dbus_interface::{AppState, VisageService};
 use engine::spawn_engine;
+use rate_limiter::RateLimiter;
 use store::FaceModelStore;
 
 #[tokio::main]
@@ -29,6 +31,7 @@ async fn main() -> Result<()> {
         model_dir = %config.model_dir.display(),
         db_path = %config.db_path.display(),
         threshold = config.similarity_threshold,
+        session_bus = config.session_bus,
         "configuration loaded"
     );
 
@@ -47,18 +50,19 @@ async fn main() -> Result<()> {
     let model_count = store.count_all().await.unwrap_or(0);
     tracing::info!(db = %config.db_path.display(), models = model_count, "store opened");
 
-    // 4. Register D-Bus service on the system bus (required for PAM)
-    //    Set VISAGE_SESSION_BUS=1 to use session bus for development without sudo.
+    // 4. Register D-Bus service on system bus (or session bus in development mode).
+    //    Set VISAGE_SESSION_BUS=1 to use the session bus without elevated privileges.
+    let session_bus = config.session_bus;
     let state = Arc::new(Mutex::new(AppState {
         config,
         engine,
         store,
+        rate_limiter: RateLimiter::new(),
     }));
 
     let service = VisageService { state };
 
-    let use_session = std::env::var("VISAGE_SESSION_BUS").is_ok();
-    let _conn = if use_session {
+    let _conn = if session_bus {
         zbus::connection::Builder::session()?
     } else {
         zbus::connection::Builder::system()?
@@ -68,7 +72,7 @@ async fn main() -> Result<()> {
     .build()
     .await?;
 
-    let bus_name = if use_session { "session" } else { "system" };
+    let bus_name = if session_bus { "session" } else { "system" };
     tracing::info!(bus = bus_name, "visaged ready — listening on org.freedesktop.Visage1");
 
     // 5. Wait for shutdown signal

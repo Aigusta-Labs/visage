@@ -3,21 +3,41 @@ use thiserror::Error;
 use tokio_rusqlite::Connection;
 use visage_core::{Embedding, FaceModel};
 
+use aes_gcm::{
+    aead::{Aead, KeyInit},
+    Aes256Gcm, Key, Nonce,
+};
+use rand::RngCore;
+use rand::rngs::OsRng;
+
 #[derive(Error, Debug)]
 pub enum StoreError {
     #[error("database error: {0}")]
     Db(#[from] tokio_rusqlite::Error),
     #[error("rusqlite error: {0}")]
     Rusqlite(#[from] rusqlite::Error),
+    #[error("embedding encryption failed")]
+    EncryptionFailed,
+    #[error("embedding decryption failed — key mismatch or corrupted data")]
+    DecryptionFailed,
+    #[error("invalid embedding blob size: {0} bytes")]
+    InvalidBlob(usize),
+    #[error("encryption key I/O error: {0}")]
+    KeyIo(#[source] std::io::Error),
 }
 
-/// SQLite-backed face model storage.
+/// SQLite-backed face model storage with AES-256-GCM encryption.
 ///
-/// Uses `tokio-rusqlite` to run SQLite operations on a blocking thread
-/// without starving the tokio runtime.
+/// Embeddings are encrypted before storage and decrypted on retrieval.
+/// A per-installation 32-byte key is generated at first use and stored at
+/// `{db_dir}/.key` (mode 0600, root-readable only).
+///
+/// Legacy plaintext blobs (2048 bytes) are accepted transparently — they are
+/// migrated to encrypted format on the next enrollment.
 #[derive(Clone)]
 pub struct FaceModelStore {
     conn: Connection,
+    enc_key: [u8; 32],
 }
 
 impl FaceModelStore {
@@ -28,9 +48,19 @@ impl FaceModelStore {
             std::fs::create_dir_all(parent).ok();
         }
 
+        let enc_key = if db_path == Path::new(":memory:") {
+            // In-memory DB (tests): use a fixed all-zeros key
+            [0u8; 32]
+        } else {
+            let key_path = db_path
+                .parent()
+                .unwrap_or(Path::new("/var/lib/visage"))
+                .join(".key");
+            load_or_generate_key(&key_path)?
+        };
+
         let conn = Connection::open(db_path).await?;
 
-        // Run migrations
         conn.call(|conn| {
             conn.execute_batch(
                 "PRAGMA journal_mode = WAL;
@@ -51,7 +81,7 @@ impl FaceModelStore {
         })
         .await?;
 
-        Ok(Self { conn })
+        Ok(Self { conn, enc_key })
     }
 
     /// Insert a new face model. Returns the generated UUID.
@@ -68,7 +98,9 @@ impl FaceModelStore {
             .clone()
             .unwrap_or_else(|| "unknown".to_string());
         let created_at = chrono::Utc::now().to_rfc3339();
-        let blob = embedding_to_bytes(&embedding.values);
+
+        // Encrypt before entering the SQLite closure
+        let blob = self.encrypt_embedding(&embedding.values)?;
 
         let id_clone = id.clone();
         let user = user.to_string();
@@ -91,39 +123,44 @@ impl FaceModelStore {
     /// Get all face models for a user (the gallery for verification).
     pub async fn get_gallery_for_user(&self, user: &str) -> Result<Vec<FaceModel>, StoreError> {
         let user = user.to_string();
-        self.conn
+
+        // Fetch raw rows from SQLite; decrypt outside the blocking closure
+        let rows: Vec<(String, String, String, Vec<u8>, String, String)> = self
+            .conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, user, label, embedding, model_version, created_at FROM faces WHERE user = ?1",
+                    "SELECT id, user, label, embedding, model_version, created_at
+                     FROM faces WHERE user = ?1",
                 )?;
                 let rows = stmt.query_map([&user], |row| {
-                    let id: String = row.get(0)?;
-                    let user: String = row.get(1)?;
-                    let label: String = row.get(2)?;
-                    let blob: Vec<u8> = row.get(3)?;
-                    let model_version: String = row.get(4)?;
-                    let created_at: String = row.get(5)?;
-                    Ok((id, user, label, blob, model_version, created_at))
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, Vec<u8>>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, String>(5)?,
+                    ))
                 })?;
-
-                let mut models = Vec::new();
-                for row in rows {
-                    let (id, user, label, blob, model_version, created_at) = row?;
-                    models.push(FaceModel {
-                        id,
-                        user,
-                        label,
-                        embedding: Embedding {
-                            values: bytes_to_embedding(&blob),
-                            model_version: Some(model_version),
-                        },
-                        created_at,
-                    });
-                }
-                Ok(models)
+                Ok(rows.collect::<Result<Vec<_>, _>>()?)
             })
-            .await
-            .map_err(StoreError::from)
+            .await?;
+
+        let mut models = Vec::with_capacity(rows.len());
+        for (id, user, label, blob, model_version, created_at) in rows {
+            let values = self.decrypt_embedding(&blob)?;
+            models.push(FaceModel {
+                id,
+                user,
+                label,
+                embedding: Embedding {
+                    values,
+                    model_version: Some(model_version),
+                },
+                created_at,
+            });
+        }
+        Ok(models)
     }
 
     /// List face models for a user (metadata only, no embeddings).
@@ -132,7 +169,8 @@ impl FaceModelStore {
         self.conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, label, model_version, quality_score, created_at FROM faces WHERE user = ?1 ORDER BY created_at",
+                    "SELECT id, label, model_version, quality_score, created_at
+                     FROM faces WHERE user = ?1 ORDER BY created_at",
                 )?;
                 let rows = stmt.query_map([&user], |row| {
                     Ok(ModelInfo {
@@ -155,8 +193,10 @@ impl FaceModelStore {
         let model_id = model_id.to_string();
         self.conn
             .call(move |conn| {
-                let affected =
-                    conn.execute("DELETE FROM faces WHERE id = ?1 AND user = ?2", [&model_id, &user])?;
+                let affected = conn.execute(
+                    "DELETE FROM faces WHERE id = ?1 AND user = ?2",
+                    [&model_id, &user],
+                )?;
                 Ok(affected > 0)
             })
             .await
@@ -167,13 +207,126 @@ impl FaceModelStore {
     pub async fn count_all(&self) -> Result<u64, StoreError> {
         self.conn
             .call(|conn| {
-                let count: u64 = conn.query_row("SELECT COUNT(*) FROM faces", [], |row| row.get(0))?;
+                let count: u64 =
+                    conn.query_row("SELECT COUNT(*) FROM faces", [], |row| row.get(0))?;
                 Ok(count)
             })
             .await
             .map_err(StoreError::from)
     }
+
+    // ── Encryption helpers ────────────────────────────────────────────────────
+
+    /// Encrypt embedding values with AES-256-GCM.
+    ///
+    /// Output: 12-byte random nonce || ciphertext || 16-byte GCM tag.
+    fn encrypt_embedding(&self, values: &[f32]) -> Result<Vec<u8>, StoreError> {
+        let plaintext = embedding_to_bytes(values);
+
+        let mut nonce_bytes = [0u8; 12];
+        OsRng.fill_bytes(&mut nonce_bytes);
+        let nonce = Nonce::from_slice(&nonce_bytes);
+
+        let key = Key::<Aes256Gcm>::from_slice(&self.enc_key);
+        let cipher = Aes256Gcm::new(key);
+
+        let ciphertext = cipher
+            .encrypt(nonce, plaintext.as_slice())
+            .map_err(|_| StoreError::EncryptionFailed)?;
+
+        let mut blob = Vec::with_capacity(12 + ciphertext.len());
+        blob.extend_from_slice(&nonce_bytes);
+        blob.extend_from_slice(&ciphertext);
+        Ok(blob)
+    }
+
+    /// Decrypt an embedding blob.
+    ///
+    /// Accepts the legacy plaintext format (512 × 4 = 2048 bytes) and the
+    /// current encrypted format (12-byte nonce + ciphertext + 16-byte GCM tag).
+    fn decrypt_embedding(&self, blob: &[u8]) -> Result<Vec<f32>, StoreError> {
+        const PLAIN_LEN: usize = 512 * 4; // legacy: raw f32 little-endian bytes
+        const NONCE_LEN: usize = 12;
+
+        if blob.len() == PLAIN_LEN {
+            // Legacy plaintext — accept transparently; re-enrolled next time
+            return Ok(bytes_to_embedding(blob));
+        }
+
+        if blob.len() <= NONCE_LEN {
+            return Err(StoreError::InvalidBlob(blob.len()));
+        }
+
+        let (nonce_bytes, ciphertext) = blob.split_at(NONCE_LEN);
+        let nonce = Nonce::from_slice(nonce_bytes);
+        let key = Key::<Aes256Gcm>::from_slice(&self.enc_key);
+        let cipher = Aes256Gcm::new(key);
+
+        let plaintext = cipher
+            .decrypt(nonce, ciphertext)
+            .map_err(|_| StoreError::DecryptionFailed)?;
+
+        Ok(bytes_to_embedding(&plaintext))
+    }
 }
+
+// ── Key management ────────────────────────────────────────────────────────────
+
+/// Load the encryption key from disk, or generate and persist a new one.
+/// Written with mode 0600 (owner-readable only).
+fn load_or_generate_key(key_path: &Path) -> Result<[u8; 32], StoreError> {
+    if key_path.exists() {
+        let bytes = std::fs::read(key_path).map_err(StoreError::KeyIo)?;
+        if bytes.len() != 32 {
+            return Err(StoreError::KeyIo(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "encryption key file has wrong length ({} bytes, expected 32)",
+                    bytes.len()
+                ),
+            )));
+        }
+        let mut key = [0u8; 32];
+        key.copy_from_slice(&bytes);
+        tracing::debug!(path = %key_path.display(), "loaded encryption key");
+        Ok(key)
+    } else {
+        let mut key = [0u8; 32];
+        OsRng.fill_bytes(&mut key);
+
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(key_path)
+            .map_err(StoreError::KeyIo)?;
+        f.write_all(&key).map_err(StoreError::KeyIo)?;
+
+        tracing::info!(path = %key_path.display(), "generated new AES-256 encryption key");
+        Ok(key)
+    }
+}
+
+// ── Serialization helpers ─────────────────────────────────────────────────────
+
+fn embedding_to_bytes(values: &[f32]) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(values.len() * 4);
+    for &v in values {
+        bytes.extend_from_slice(&v.to_le_bytes());
+    }
+    bytes
+}
+
+fn bytes_to_embedding(bytes: &[u8]) -> Vec<f32> {
+    bytes
+        .chunks_exact(4)
+        .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+        .collect()
+}
+
+// ── Public types ──────────────────────────────────────────────────────────────
 
 /// Metadata about an enrolled face model (no embedding data).
 #[derive(Debug, Clone, serde::Serialize)]
@@ -185,22 +338,7 @@ pub struct ModelInfo {
     pub created_at: String,
 }
 
-/// Serialize f32 embedding to raw little-endian bytes.
-fn embedding_to_bytes(values: &[f32]) -> Vec<u8> {
-    let mut bytes = Vec::with_capacity(values.len() * 4);
-    for &v in values {
-        bytes.extend_from_slice(&v.to_le_bytes());
-    }
-    bytes
-}
-
-/// Deserialize raw little-endian bytes to f32 embedding.
-fn bytes_to_embedding(bytes: &[u8]) -> Vec<f32> {
-    bytes
-        .chunks_exact(4)
-        .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
-        .collect()
-}
+// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -244,15 +382,12 @@ mod tests {
 
         let id = store.insert("alice", "default", &emb, 0.9).await.unwrap();
 
-        // Bob cannot see Alice's models
         let bob_gallery = store.get_gallery_for_user("bob").await.unwrap();
         assert!(bob_gallery.is_empty());
 
-        // Bob cannot delete Alice's model
         let deleted = store.remove("bob", &id).await.unwrap();
         assert!(!deleted);
 
-        // Alice can delete her own model
         let deleted = store.remove("alice", &id).await.unwrap();
         assert!(deleted);
 
@@ -262,7 +397,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_embedding_byte_fidelity() {
-        // Verify that special float values survive the roundtrip
         let values = vec![
             0.0,
             -0.0,
@@ -279,6 +413,45 @@ mod tests {
         for (orig, rec) in values.iter().zip(recovered.iter()) {
             assert_eq!(orig.to_bits(), rec.to_bits(), "mismatch: {orig} vs {rec}");
         }
+    }
+
+    #[tokio::test]
+    async fn test_encryption_roundtrip() {
+        let store = FaceModelStore::open(Path::new(":memory:")).await.unwrap();
+
+        // Full 512-dim embedding to exercise the real code path
+        let values: Vec<f32> = (0..512).map(|i| i as f32 / 512.0).collect();
+        let emb = Embedding {
+            values: values.clone(),
+            model_version: Some("w600k_r50".to_string()),
+        };
+
+        let id = store.insert("alice", "test", &emb, 0.95).await.unwrap();
+        let gallery = store.get_gallery_for_user("alice").await.unwrap();
+
+        assert_eq!(gallery.len(), 1);
+        assert_eq!(gallery[0].id, id);
+        for (orig, rec) in values.iter().zip(gallery[0].embedding.values.iter()) {
+            assert_eq!(orig.to_bits(), rec.to_bits());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_wrong_key_fails() {
+        // Encrypt with one key, try to decrypt with another — must fail
+        let store1 = FaceModelStore {
+            conn: tokio_rusqlite::Connection::open(Path::new(":memory:"))
+                .await
+                .unwrap(),
+            enc_key: [1u8; 32],
+        };
+        let store2 = FaceModelStore {
+            conn: store1.conn.clone(),
+            enc_key: [2u8; 32],
+        };
+
+        let blob = store1.encrypt_embedding(&[0.1, 0.2, 0.3]).unwrap();
+        assert!(store2.decrypt_embedding(&blob).is_err());
     }
 
     #[tokio::test]

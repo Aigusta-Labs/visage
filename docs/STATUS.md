@@ -117,13 +117,13 @@ Items marked ✅ have been verified; items marked ⬜ require hardware not avail
 
 | Limitation | Impact | Mitigation | ADR |
 |------------|--------|------------|-----|
-| No rate limiting | Unlimited face attempts | Physical access required; IR-only pipeline raises bar | -- |
+| ~~No rate limiting~~ | ~~Unlimited face attempts~~ | **Resolved v0.1.1** — 5 failures/60 s → 5 min lockout; engine errors excluded | -- |
+| ~~D-Bus `user` param not validated~~ | ~~Compromised process can probe any user~~ | **Resolved v0.1.1** — caller UID verified via GetConnectionUnixUser; root exempt; session bus skips (dev mode) | ADR 007 |
+| ~~Face embeddings not encrypted~~ | ~~DB readable as root~~ | **Resolved v0.1.1** — AES-256-GCM at rest; per-installation key at `{db_dir}/.key` (mode 0600) | ADR 003 |
 | No active liveness | High-quality IR photo could pass | Emitter + multi-frame reduces risk; impractical in practice | ADR 007 |
-| D-Bus `user` param not validated | Compromised process can probe any user | root-only mutations; Verify is read-only | ADR 007 |
-| `MemoryDenyWriteExecute=false` | Daemon can map W+X pages | All other sandbox directives apply | ADR 007 |
-| Face embeddings not encrypted | DB readable as root | Read requires root; full disk encryption recommended | ADR 003 |
+| `MemoryDenyWriteExecute=false` | Daemon can map W+X pages | Architectural: ONNX Runtime requires JIT; all other sandbox directives apply | ADR 007 |
 | Ubuntu only | No other distributions | .deb ships; NixOS, AUR, COPR pending | ADR 007 |
-| ~1.4s verify latency | Above 500ms target | CPU-only ONNX on USB webcam; IR camera + GPU should be faster | -- |
+| ~1.4s verify latency | Above 500ms target | Hardware-dependent: CPU-only ONNX on USB webcam; target <500 ms requires IR camera + hardware acceleration | -- |
 
 ---
 

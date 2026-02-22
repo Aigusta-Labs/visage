@@ -24,6 +24,8 @@ rusqlite = { workspace = true }
 tokio-rusqlite = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
+aes-gcm = { workspace = true }
+rand = { workspace = true }
 
 [package.metadata.deb]
 name = "visage"

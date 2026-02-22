@@ -20,6 +20,9 @@ pub struct Config {
     pub frames_per_enroll: usize,
     /// Whether to activate the IR emitter around each capture sequence.
     pub emitter_enabled: bool,
+    /// Whether the daemon is running on the session bus (development mode).
+    /// UID validation is skipped on the session bus — all callers share the same user.
+    pub session_bus: bool,
 }
 
 impl Config {
@@ -54,6 +57,7 @@ impl Config {
             emitter_enabled: std::env::var("VISAGE_EMITTER_ENABLED")
                 .map(|v| v != "0")
                 .unwrap_or(true),
+            session_bus: std::env::var("VISAGE_SESSION_BUS").is_ok(),
         }
     }
 
