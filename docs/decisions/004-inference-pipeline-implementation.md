@@ -1,4 +1,4 @@
-# ADR 003 — ONNX Inference Pipeline: Implementation Decisions
+# ADR 004 — ONNX Inference Pipeline: Implementation Decisions
 
 **Date:** 2026-02-21
 **Status:** Accepted
@@ -414,20 +414,20 @@ the user re-enrolls. A future `FaceModel::schema_version: u32` field would enabl
 
 Step 2 is complete. The remaining steps are:
 
-### Step 3: Daemon (visaged) — CURRENT BLOCKER
+### Step 3: Daemon (visaged) — ✅ COMPLETE
 
-The `visaged` stub exists but has no inference logic. It must:
+Step 3 is implemented. See [ADR 003 — Daemon Integration](003-daemon-integration.md) for the full
+decision log. Summary of what was built:
 
-| Task | File | Notes |
-|------|------|-------|
-| Load FaceDetector + FaceRecognizer at startup | `visaged/main.rs` | Use `default_model_dir()` |
-| Implement `Verify(username)` D-Bus method | `dbus_interface.rs` | Calls detect → align → recognize → compare |
-| Load enrolled gallery per-user from disk | `visaged/main.rs` | Deserialize `Vec<FaceModel>` from JSON |
-| IR emitter activation before capture | `visaged/main.rs` | Use `visage-hw::IrEmitter` |
-| Auth timeout enforcement | `visaged/main.rs` | Cancel Verify after N seconds |
-| Enrollment method: `Enroll(username, label)` | `dbus_interface.rs` | Capture → embed → store |
-
-**Reference KB needed:** ZBUS-DBus-Reference (P2 in ADR 002 KB plan).
+| Component | File | Status |
+|-----------|------|--------|
+| Config struct, env var loading | `visaged/src/config.rs` | ✅ |
+| SQLite model store (WAL, per-user) | `visaged/src/store.rs` | ✅ |
+| Engine thread bridge (mpsc + oneshot) | `visaged/src/engine.rs` | ✅ |
+| D-Bus handlers (enroll, verify, list, remove, status) | `visaged/src/dbus_interface.rs` | ✅ |
+| Daemon startup + SIGINT handling | `visaged/src/main.rs` | ✅ |
+| CLI D-Bus proxy (all 5 commands) | `visage-cli/src/main.rs` | ✅ |
+| D-Bus policy file (system bus, Step 4) | `packaging/dbus/org.freedesktop.Visage1.conf` | ✅ |
 
 ---
 

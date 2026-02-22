@@ -6,7 +6,7 @@
 |------|-----------|--------|
 | 1 | Camera pipeline (visage-hw) | ✅ Complete |
 | 2 | ONNX inference pipeline (visage-core) | ✅ Complete |
-| 3 | Daemon (visaged) | Stub — blocked on Step 2 ✅ |
+| 3 | Daemon (visaged) + CLI (visage-cli) | ✅ Complete |
 | 4 | PAM module (pam-visage) | Stub |
 | 5 | IR emitter control | Stub |
 | 6 | Packaging (Ubuntu + NixOS) | Not started |
@@ -69,7 +69,7 @@ native GREY at 640×360. This is more efficient than YUYV — no conversion need
 **Y16 note:** Many IR cameras default to 16-bit depth output (Y16). The upper 8 bits
 are kept for face detection input (SCRFD trained on 8-bit images). The lower 8 bits
 carry sub-pixel IR intensity detail; these are discarded in v2 but will be relevant
-for liveness detection in v3. See ADR 003, §6 for details.
+for liveness detection in v3. See ADR 004, §6 for details.
 
 ### Frame Processing
 
@@ -260,7 +260,90 @@ visage_core::default_model_dir() -> PathBuf  // $XDG_DATA_HOME/visage/models
   downloaded ONNX files and are not yet gated behind `--features integration`.
 - **No load-time sanity check.** Model compatibility is verified on first inference, not at load.
 
-See ADR 003 for full decision log, rationale, and v3 migration paths.
+See [ADR 004](decisions/004-inference-pipeline-implementation.md) for full decision log, rationale, and v3 migration paths.
+
+## Daemon (visaged) — Implemented
+
+### Configuration
+
+All settings are overridable via `VISAGE_*` environment variables. Defaults:
+
+| Setting | Default | Env var |
+|---------|---------|---------|
+| Camera device | `/dev/video2` | `VISAGE_CAMERA_DEVICE` |
+| Model directory | `$XDG_DATA_HOME/visage/models/` | `VISAGE_MODEL_DIR` |
+| Database path | `$XDG_DATA_HOME/visage/faces.db` | `VISAGE_DB_PATH` |
+| Similarity threshold | `0.40` | `VISAGE_SIMILARITY_THRESHOLD` |
+| Verify timeout | `10s` | `VISAGE_VERIFY_TIMEOUT_SECS` |
+| Warmup frames | `4` | `VISAGE_WARMUP_FRAMES` |
+| Frames per verify | `3` | `VISAGE_FRAMES_PER_VERIFY` |
+| Frames per enroll | `5` | `VISAGE_FRAMES_PER_ENROLL` |
+
+### Startup Sequence (Fail-Fast)
+
+```
+1. Init tracing (RUST_LOG)
+2. Load Config from env vars
+3. spawn_engine() — opens camera + loads both ONNX models synchronously
+   Warmup: discard N frames for camera AGC/AE stabilization
+   Fail here → daemon exits; error visible in journal
+4. FaceModelStore::open() — creates SQLite DB + runs migrations if needed
+5. zbus session bus: register org.freedesktop.Visage1 at /org/freedesktop/Visage1
+6. Wait for SIGINT/SIGTERM
+```
+
+### Engine Thread
+
+Camera, FaceDetector, and FaceRecognizer are `!Sync` and take `&mut self`. They live on a
+dedicated `std::thread` (not a tokio task). D-Bus handlers communicate via `mpsc::channel`
+(depth: 4) + `oneshot` reply channels. This avoids `Arc<Mutex<_>>` contention on the hot path.
+
+### D-Bus API (`org.freedesktop.Visage1`)
+
+| Method | Signature | Returns |
+|--------|-----------|---------|
+| `Enroll` | `(user: s, label: s)` | `s` — model UUID |
+| `Verify` | `(user: s)` | `b` — match result |
+| `Status` | `()` | `s` — JSON status |
+| `ListModels` | `(user: s)` | `s` — JSON array |
+| `RemoveModel` | `(user: s, model_id: s)` | `b` — deleted |
+
+**Locking protocol:** Every D-Bus handler follows:
+1. Lock `Arc<Mutex<AppState>>` → copy config values + clone `EngineHandle` → unlock
+2. Call engine (async I/O over channel; no lock held)
+3. Lock → write to store → unlock
+
+This ensures concurrent `Status` / `ListModels` calls can proceed while an `Enroll` or
+`Verify` is running.
+
+### Storage (SQLite WAL)
+
+Embeddings stored as raw little-endian `f32` bytes (512 × 4 = 2048 bytes each). Two
+v3 data plane columns (`quality_score REAL`, `pose_label TEXT`) are included with
+defaults — no migration needed when pose-indexed enrollment is added.
+
+**Cross-user protection:** Every mutation includes `WHERE user = ?`. `RemoveModel` returns
+`false` (not an error) if the model belongs to a different user.
+
+### Known Limitations (v2)
+
+1. **Session bus only.** Step 4 (PAM) requires the system bus because PAM modules execute
+   as root. Migration is one line (`Connection::system()`) plus deploying
+   `packaging/dbus/org.freedesktop.Visage1.conf` to `/usr/share/dbus-1/system.d/`.
+
+2. **No D-Bus caller authentication.** The `user` parameter is caller-supplied and not
+   validated against the D-Bus sender identity. A compromised caller can enroll models
+   for any username. Step 4 should bind `user` to the D-Bus peer credentials.
+
+3. **best_quality unused.** `VerifyResult.best_quality` (capture confidence of the best
+   matching frame) is computed but not exposed over D-Bus. Reserved as a v3 hook for
+   surfacing quality metadata without a schema change.
+
+4. **Single auth flow at a time.** The engine thread is a single goroutine with depth-4
+   queue. Concurrent `Verify` calls serialize behind the engine. Acceptable for v2 (one
+   auth at a time); v3 would require a pool.
+
+See [ADR 003](decisions/003-daemon-integration.md) for full decision log and rationale.
 
 ## Security Model
 

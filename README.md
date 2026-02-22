@@ -10,8 +10,8 @@ analogous to Windows Hello. Built in Rust for memory safety in the authenticatio
 | Step | Component | Status |
 |------|-----------|--------|
 | 1 | Camera capture pipeline (`visage-hw`) | **Complete** |
-| 2 | ONNX inference — SCRFD + ArcFace (`visage-core`) | Pending |
-| 3 | Daemon + D-Bus + SQLite model store (`visaged`) | Pending |
+| 2 | ONNX inference — SCRFD + ArcFace (`visage-core`) | **Complete** |
+| 3 | Daemon + D-Bus + SQLite model store (`visaged`) | **Complete** |
 | 4 | PAM module (`pam-visage`) | Pending |
 | 5 | IR emitter integration (`visage-hw`) | Pending |
 | 6 | Ubuntu packaging | Pending |
@@ -45,6 +45,28 @@ Not yet suitable for production use.
 
 ## Usage
 
+**Prerequisites:** Download ONNX models per `models/README.md` and start the daemon.
+
+```bash
+# Start the daemon (requires ONNX models in $XDG_DATA_HOME/visage/models/)
+visaged
+
+# Enroll your face
+visage enroll --label default
+
+# Verify your face (exits 0 on match, 1 on no-match — shell-friendly)
+visage verify
+
+# List enrolled models
+visage list
+
+# Remove a model
+visage remove <model-id>
+
+# Show daemon status
+visage status
+```
+
 ### Camera diagnostics
 
 ```bash
@@ -73,13 +95,15 @@ See [contrib/hw/README.md](contrib/hw/README.md) for the contribution process.
 ## Documentation
 
 - [Strategy — v2 to v3 Growth Map](docs/STRATEGY.md) ← start here
-- [Domain Audit — Technical Coverage and Knowledge Gaps](docs/research/domain-audit.md)
 - [Architecture](docs/architecture.md)
 - [Threat Model](docs/threat-model.md)
 - [Architecture Review and Roadmap](docs/research/architecture-review-and-roadmap.md)
 - [v3 Vision — Forward-Looking Architecture](docs/research/v3-vision.md)
+- [Domain Audit — Technical Coverage and Knowledge Gaps](docs/research/domain-audit.md)
 - [Step 1 ADR — Camera Capture Pipeline](docs/decisions/001-camera-capture-pipeline.md)
 - [Step 2 ADR — ONNX Inference KB and Blocker Resolution](docs/decisions/002-onnx-inference-kb-and-blocker-resolution.md)
+- [Step 3 ADR — Daemon Integration Architecture](docs/decisions/003-daemon-integration.md)
+- [Step 4 ADR — ONNX Inference Pipeline Implementation](docs/decisions/004-inference-pipeline-implementation.md)
 
 ## License
 

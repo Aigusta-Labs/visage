@@ -61,8 +61,8 @@ Full checklist: [architecture-review-and-roadmap.md](research/architecture-revie
 | Step | Component | Purpose |
 |------|-----------|---------|
 | ✅ 1 | `visage-hw` | Camera capture — V4L2, CLAHE, dark frame filtering |
-| ⬜ 2 | `visage-core` | ONNX inference — SCRFD detection + ArcFace recognition |
-| ⬜ 3 | `visaged` | Daemon — D-Bus, SQLite, persistent camera stream |
+| ✅ 2 | `visage-core` | ONNX inference — SCRFD detection + ArcFace recognition |
+| ✅ 3 | `visaged` | Daemon — D-Bus, SQLite, session bus, persistent model store |
 | ⬜ 4 | `pam-visage` | PAM module — 3s timeout, PAM_IGNORE fallback |
 | ⬜ 5 | `visage-hw` | IR emitter — UVC extension unit control |
 | ⬜ 6 | Packaging | Ubuntu .deb, pam-auth-update, systemd hardening |
@@ -206,4 +206,7 @@ The PAM module shipped in v2 will work with v3 without modification. It calls `V
 | [v3-vision.md](research/v3-vision.md) | Full v3 architecture analysis — 5 dimensions with concrete implementation paths |
 | [architecture.md](architecture.md) | Component overview, data flow, API surface |
 | [threat-model.md](threat-model.md) | Threat model, trust boundaries, attack mitigations |
-| [decisions/001-camera-capture-pipeline.md](decisions/001-camera-capture-pipeline.md) | ADR: Step 1 implementation decisions |
+| [decisions/001-camera-capture-pipeline.md](decisions/001-camera-capture-pipeline.md) | ADR: Step 1 — camera pipeline decisions |
+| [decisions/002-onnx-inference-kb-and-blocker-resolution.md](decisions/002-onnx-inference-kb-and-blocker-resolution.md) | ADR: Step 2 — inference KB and blocker resolution |
+| [decisions/003-daemon-integration.md](decisions/003-daemon-integration.md) | ADR: Step 3 — daemon architecture decisions |
+| [decisions/004-inference-pipeline-implementation.md](decisions/004-inference-pipeline-implementation.md) | ADR: Step 4 — ONNX pipeline implementation details |
