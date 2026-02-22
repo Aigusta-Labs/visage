@@ -9,7 +9,7 @@
 | 3 | Daemon (visaged) + CLI (visage-cli) | ✅ Complete |
 | 4 | PAM module (pam-visage) + system bus migration | ✅ Complete |
 | 5 | IR emitter control (`visage-hw`) | ✅ Complete |
-| 6 | Packaging (Ubuntu + NixOS) | Not started |
+| 6 | Ubuntu packaging & system integration | ✅ Complete |
 
 ## Design Principles
 
@@ -517,6 +517,80 @@ su -c "vim /etc/pam.d/sudo"
    (`LOG_AUTHPRIV`) is deferred to Step 6.
 
 See [ADR 005](decisions/005-pam-system-bus-migration.md) for full decision log.
+
+## Packaging & Deployment — Implemented
+
+### Ubuntu .deb Package
+
+Built with `cargo-deb` from the `visaged` crate. The package includes all binaries,
+the PAM module, D-Bus policy, systemd unit, and pam-auth-update profile.
+
+**Package contents:**
+
+| File | Destination | Purpose |
+|------|-------------|---------|
+| `visaged` | `/usr/bin/visaged` | Daemon binary |
+| `visage` | `/usr/bin/visage` | CLI tool |
+| `libpam_visage.so` | `/usr/lib/security/pam_visage.so` | PAM module |
+| `org.freedesktop.Visage1.conf` | `/usr/share/dbus-1/system.d/` | D-Bus policy |
+| `visaged.service` | `/usr/lib/systemd/system/` | systemd unit |
+| `pam-auth-update` | `/usr/share/pam-configs/visage` | PAM profile |
+
+### Lifecycle
+
+**Install:** `postinst` creates `/var/lib/visage/`, enables the systemd service, and
+runs `pam-auth-update --package` to insert Visage into the PAM stack at priority 900
+(before `pam_unix`).
+
+**Model download:** `sudo visage setup` downloads ONNX models (~182 MB) from HuggingFace
+with SHA-256 verification. Models are stored in `/var/lib/visage/models/`.
+
+**Remove:** `prerm` stops the daemon, disables the service, and runs
+`pam-auth-update --remove` to restore password-only auth.
+
+**Purge:** `postrm` removes `/var/lib/visage/` (models + face database).
+
+### Daemon Hardening (systemd)
+
+| Directive | Value | Rationale |
+|-----------|-------|-----------|
+| `ProtectSystem` | `strict` | Read-only filesystem except explicit paths |
+| `ProtectHome` | `true` | No access to user home directories |
+| `NoNewPrivileges` | `true` | Prevent privilege escalation |
+| `PrivateTmp` | `true` | Isolated temp directory |
+| `DeviceAllow` | `/dev/video* rw` | Camera access only |
+| `ReadWritePaths` | `/var/lib/visage` | Database and model storage |
+| `MemoryDenyWriteExecute` | `false` | Required for ONNX Runtime JIT |
+
+### D-Bus Access Control
+
+| Method | Default users | Root |
+|--------|---------------|------|
+| `Verify` | Allowed | Allowed |
+| `Status` | Allowed | Allowed |
+| `Enroll` | Denied | Allowed |
+| `RemoveModel` | Denied | Allowed |
+| `ListModels` | Denied | Allowed |
+
+### PAM Stack Integration
+
+The pam-auth-update profile places Visage at priority 900:
+
+```
+[success=end default=ignore]    pam_visage.so
+```
+
+- Face match (`PAM_SUCCESS`) → authentication succeeds, skips password
+- No match or error (`PAM_IGNORE`) → falls through to password prompt
+- 3-second D-Bus call timeout prevents login hangs
+
+### Known Limitations (Step 6)
+
+1. **No runtime quirk override.** Adding camera support requires rebuild.
+2. **No dedicated service user.** Daemon runs as root with systemd hardening.
+3. **No D-Bus caller authentication.** `user` parameter is caller-supplied.
+
+See [ADR 007](decisions/007-ubuntu-packaging.md) for full decision log.
 
 ## Security Model
 

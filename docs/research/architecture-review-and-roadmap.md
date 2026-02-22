@@ -333,11 +333,11 @@ Verify `sudo echo test` authenticates via face.
 | Step | Status | Date |
 |------|--------|------|
 | 1 — Camera capture pipeline | ✅ Complete | 2026-02-21 |
-| 2 — ONNX inference (SCRFD + ArcFace) | ⬜ Pending | — |
-| 3 — Daemon + D-Bus + SQLite | ⬜ Pending | — |
-| 4 — PAM module | ⬜ Pending | — |
-| 5 — IR emitter integration | ⬜ Pending | — |
-| 6 — Ubuntu packaging | ⬜ Pending | — |
+| 2 — ONNX inference (SCRFD + ArcFace) | ✅ Complete | 2026-02-21 |
+| 3 — Daemon + D-Bus + SQLite | ✅ Complete | 2026-02-22 |
+| 4 — PAM module | ✅ Complete | 2026-02-22 |
+| 5 — IR emitter integration | ✅ Complete | 2026-02-22 |
+| 6 — Ubuntu packaging | ✅ Complete | 2026-02-22 |
 
 ---
 

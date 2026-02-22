@@ -14,7 +14,7 @@ analogous to Windows Hello. Built in Rust for memory safety in the authenticatio
 | 3 | Daemon + D-Bus + SQLite model store (`visaged`) | **Complete** |
 | 4 | PAM module + system bus migration (`pam-visage`) | **Complete** |
 | 5 | IR emitter integration (`visage-hw`) | **Complete** |
-| 6 | Ubuntu packaging | Pending |
+| 6 | Ubuntu packaging & system integration | **Complete** |
 
 Not yet suitable for production use.
 
@@ -43,9 +43,52 @@ Not yet suitable for production use.
 | `visage-core` | Library | Face detection (SCRFD) + recognition (ArcFace) via ONNX |
 | `visage-hw` | Library | Camera capture, IR emitter control, hardware quirks DB |
 
+## Installation (Ubuntu 24.04)
+
+### Install from .deb
+
+```bash
+# Install the package
+sudo apt install ./visage_0.1.0_amd64.deb
+
+# Download face detection models (~182 MB)
+sudo visage setup
+
+# Enroll your face
+sudo visage enroll --label default
+
+# Test — should authenticate via face, falls back to password on failure
+sudo echo "face auth works"
+```
+
+### What the package does
+
+- Installs `visaged` (daemon), `visage` (CLI), and `pam_visage.so` (PAM module)
+- Enables the `visaged` systemd service
+- Configures PAM via `pam-auth-update` (face auth before password)
+
+### Removal
+
+```bash
+sudo apt remove visage     # removes binaries, disables PAM and service
+sudo apt purge visage      # also removes /var/lib/visage (models + face database)
+```
+
+After removal, `sudo` returns to password-only authentication.
+
+### Build from source
+
+```bash
+cargo build --release --workspace
+cargo deb -p visaged --no-build
+```
+
+Requires `cargo-deb`: `cargo install cargo-deb`
+
 ## Usage
 
-**Prerequisites:** Download ONNX models per `models/README.md` and start the daemon.
+**Prerequisites:** Download ONNX models via `visage setup` (or manually per `models/README.md`)
+and start the daemon.
 
 ```bash
 # Start the daemon on the system bus (required for PAM)
@@ -119,6 +162,7 @@ See [contrib/hw/README.md](contrib/hw/README.md) for the contribution process.
 - [Step 4 ADR — ONNX Inference Pipeline Implementation](docs/decisions/004-inference-pipeline-implementation.md)
 - [Step 4 ADR — PAM Module and System Bus Migration](docs/decisions/005-pam-system-bus-migration.md)
 - [Step 5 ADR — IR Emitter Integration](docs/decisions/006-ir-emitter-integration.md)
+- [Step 6 ADR — Ubuntu Packaging](docs/decisions/007-ubuntu-packaging.md)
 
 ## License
 
