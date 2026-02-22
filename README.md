@@ -79,6 +79,7 @@ See [contrib/hw/README.md](contrib/hw/README.md) for the contribution process.
 - [Architecture Review and Roadmap](docs/research/architecture-review-and-roadmap.md)
 - [v3 Vision — Forward-Looking Architecture](docs/research/v3-vision.md)
 - [Step 1 ADR — Camera Capture Pipeline](docs/decisions/001-camera-capture-pipeline.md)
+- [Step 2 ADR — ONNX Inference KB and Blocker Resolution](docs/decisions/002-onnx-inference-kb-and-blocker-resolution.md)
 
 ## License
 

@@ -12,7 +12,8 @@ The following is verified by working code and live hardware tests:
 
 - **V4L2 camera capture** — format negotiation (GREY/YUYV), mmap streaming, dark frame filtering, CLAHE. All working on `/dev/video2`. 9/9 unit tests pass.
 - **Frame data model** — `Frame` struct, YUYV→grayscale, histogram analysis implemented.
-- **ONNX crate selection** — `ort = "2.0.0-rc.11"` with `ndarray = "0.16"`. Session API explored.
+- **ONNX crate selection** — `ort = "2.0.0-rc.11"` with `ndarray = "0.17"` (bumped from 0.16 — compile blocker resolved 2026-02-21). Session API documented in `Reference/Visage/ORT-Rust-API-Reference.md`.
+- **InsightFace model specs** — SCRFD det_10g.onnx I/O, anchor grid decode, ArcFace w600k_r50.onnx normalization (`/127.5`), 4-DOF similarity transform, L2 normalization, cosine similarity. All documented in `Reference/Visage/InsightFace-Model-Reference.md`.
 - **D-Bus interface skeleton** — zbus 5 `#[interface]` macro, method signatures, D-Bus security policy design (peer credential checks, XML policy for `Visage1`).
 - **PAM return code contract** — `PAM_IGNORE` (25) on all non-success paths. Never `PAM_AUTH_ERR`.
 - **SQLite schema design** — embeddings as variable-length BLOB, WAL mode, root-only permissions, `quality_score` and `pose_label` columns planned.
