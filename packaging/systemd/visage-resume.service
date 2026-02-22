@@ -1,0 +1,10 @@
+[Unit]
+Description=Restart Visage daemon after resume from suspend
+After=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl restart visaged.service
+
+[Install]
+WantedBy=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target

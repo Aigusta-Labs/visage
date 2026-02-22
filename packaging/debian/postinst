@@ -7,6 +7,7 @@ case "$1" in
         pam-auth-update --package visage 2>/dev/null || true
         systemctl daemon-reload
         systemctl enable visaged.service 2>/dev/null || true
+        systemctl enable visage-resume.service 2>/dev/null || true
         if [ ! -f /var/lib/visage/models/det_10g.onnx ]; then
             echo ""
             echo ">>> Run 'sudo visage setup' to download face detection models (~182 MB)"

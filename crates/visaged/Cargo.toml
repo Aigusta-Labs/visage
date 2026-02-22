@@ -38,6 +38,7 @@ assets = [
     ["target/release/libpam_visage.so", "usr/lib/security/pam_visage.so", "644"],
     ["../../packaging/dbus/org.freedesktop.Visage1.conf", "usr/share/dbus-1/system.d/", "644"],
     ["../../packaging/systemd/visaged.service", "usr/lib/systemd/system/", "644"],
+    ["../../packaging/systemd/visage-resume.service", "usr/lib/systemd/system/", "644"],
     ["../../packaging/debian/pam-auth-update", "usr/share/pam-configs/visage", "644"],
     ["../../README.md", "usr/share/doc/visage/README.md", "644"],
 ]

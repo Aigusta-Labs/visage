@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libpam0g-dev libdbus-1-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace -- -D warnings
+
+      - name: Build
+        run: cargo build --release --workspace
+
+      - name: Test
+        run: cargo test --workspace
+
+  build-deb:
+    runs-on: ubuntu-24.04
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libpam0g-dev libdbus-1-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install cargo-deb
+        run: cargo install cargo-deb
+
+      - name: Build release
+        run: cargo build --release --workspace
+
+      - name: Build .deb package
+        run: cargo deb -p visaged
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: visage-deb
+          path: target/debian/visage_*.deb
+
+  release:
+    runs-on: ubuntu-24.04
+    needs: build-deb
+    if: github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release:')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download .deb artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: visage-deb
+
+      - name: Get version
+        id: version
+        run: echo "version=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Visage v${{ steps.version.outputs.version }}
+          files: visage_*.deb
+          draft: false
+          prerelease: true
