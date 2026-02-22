@@ -24,3 +24,20 @@ rusqlite = { workspace = true }
 tokio-rusqlite = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
+
+[package.metadata.deb]
+name = "visage"
+maintainer = "Aigusta Labs"
+depends = "libpam-runtime, dbus"
+section = "admin"
+priority = "optional"
+maintainer-scripts = "../../packaging/debian/"
+assets = [
+    ["target/release/visaged", "usr/bin/", "755"],
+    ["target/release/visage", "usr/bin/", "755"],
+    ["target/release/libpam_visage.so", "usr/lib/security/pam_visage.so", "644"],
+    ["../../packaging/dbus/org.freedesktop.Visage1.conf", "usr/share/dbus-1/system.d/", "644"],
+    ["../../packaging/systemd/visaged.service", "usr/lib/systemd/system/", "644"],
+    ["../../packaging/debian/pam-auth-update", "usr/share/pam-configs/visage", "644"],
+    ["../../README.md", "usr/share/doc/visage/README.md", "644"],
+]
