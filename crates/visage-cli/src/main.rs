@@ -1,3 +1,5 @@
+mod setup;
+
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
@@ -53,6 +55,12 @@ enum Commands {
         /// User who owns the model (defaults to $USER)
         #[arg(short, long)]
         user: Option<String>,
+    },
+    /// Download ONNX models required for face detection and recognition
+    Setup {
+        /// Model directory (default: /var/lib/visage/models when root, ~/.local/share/visage/models otherwise)
+        #[arg(short, long)]
+        model_dir: Option<String>,
     },
     /// Show daemon status
     Status,
@@ -170,6 +178,9 @@ async fn main() -> Result<()> {
                     std::process::exit(1);
                 }
             }
+        }
+        Commands::Setup { model_dir } => {
+            setup::run(model_dir)?;
         }
         Commands::Discover => {
             cmd_discover();
