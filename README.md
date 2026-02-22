@@ -75,6 +75,7 @@ See [contrib/hw/README.md](contrib/hw/README.md) for the contribution process.
 - [Architecture](docs/architecture.md)
 - [Threat Model](docs/threat-model.md)
 - [Architecture Review and Roadmap](docs/research/architecture-review-and-roadmap.md)
+- [v3 Vision — Forward-Looking Architecture](docs/research/v3-vision.md)
 - [Step 1 ADR — Camera Capture Pipeline](docs/decisions/001-camera-capture-pipeline.md)
 
 ## License

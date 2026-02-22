@@ -637,7 +637,7 @@ Linux and Windows Hello for the first time.
 |----------|-------|
 | Device path | /dev/video2 |
 | Resolution | 640x360 |
-| Format | YUYV (converted to grayscale) |
+| Format | GREY (native grayscale; driver returns GREY when YUYV requested) |
 | IR emitter UVC unit | 14 |
 | IR emitter UVC selector | 6 |
 | IR emitter control bytes | [1, 3, 3, 0, 0, 0, 0, 0, 0] |
