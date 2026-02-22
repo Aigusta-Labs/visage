@@ -11,10 +11,8 @@ async fn main() -> Result<()> {
 
     tracing::info!("visaged starting");
 
-    // TODO: Initialize camera via visage-hw
-    // TODO: Load ONNX models via visage-core
-    // TODO: Register D-Bus interface
-    // TODO: Enter main loop
+    // STEP 3: Initialize camera, load models, register D-Bus interface, enter main loop
+    // Design documented in docs/architecture.md and ADR 003
 
     tracing::info!("visaged ready");
 
