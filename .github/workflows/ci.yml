@@ -101,6 +101,7 @@ jobs:
         with:
           tag_name: v${{ steps.version.outputs.version }}
           name: Visage v${{ steps.version.outputs.version }}
+          body_path: CHANGELOG.md
           files: visage_*.deb
           draft: false
           prerelease: true

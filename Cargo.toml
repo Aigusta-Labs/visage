@@ -12,7 +12,7 @@ members = [
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/Aigusta-Labs/visage"
+repository = "https://github.com/sovren-software/visage"
 rust-version = "1.75"
 
 [workspace.dependencies]
