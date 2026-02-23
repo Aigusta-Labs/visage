@@ -187,10 +187,8 @@ impl Camera {
                 }
                 Ok(gray)
             }
-            PixelFormat::Yuyv => {
-                frame::yuyv_to_grayscale(buf, self.width, self.height)
-                    .map_err(|e| CameraError::CaptureFailed(format!("YUYV conversion failed: {e}")))
-            }
+            PixelFormat::Yuyv => frame::yuyv_to_grayscale(buf, self.width, self.height)
+                .map_err(|e| CameraError::CaptureFailed(format!("YUYV conversion failed: {e}"))),
         }
     }
 
@@ -256,7 +254,10 @@ impl Camera {
             let Ok(caps) = dev.query_caps() else {
                 continue;
             };
-            if !caps.capabilities.contains(v4l::capability::Flags::VIDEO_CAPTURE) {
+            if !caps
+                .capabilities
+                .contains(v4l::capability::Flags::VIDEO_CAPTURE)
+            {
                 continue;
             }
             devices.push(DeviceInfo {

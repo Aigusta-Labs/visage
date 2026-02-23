@@ -67,7 +67,10 @@ impl FaceRecognizer {
         height: u32,
         face: &BoundingBox,
     ) -> Result<Embedding, RecognizerError> {
-        let landmarks = face.landmarks.as_ref().ok_or(RecognizerError::NoLandmarks)?;
+        let landmarks = face
+            .landmarks
+            .as_ref()
+            .ok_or(RecognizerError::NoLandmarks)?;
 
         // Align face to canonical 112x112 position
         let aligned = alignment::align_face(frame, width, height, landmarks);
@@ -76,7 +79,9 @@ impl FaceRecognizer {
         let input = Self::preprocess(&aligned);
 
         // Run inference
-        let outputs = self.session.run(ort::inputs![TensorRef::from_array_view(input.view())?])?;
+        let outputs = self
+            .session
+            .run(ort::inputs![TensorRef::from_array_view(input.view())?])?;
 
         let (_, raw_data) = outputs[0]
             .try_extract_tensor::<f32>()
@@ -112,10 +117,7 @@ impl FaceRecognizer {
 
         for y in 0..size {
             for x in 0..size {
-                let pixel = aligned_face
-                    .get(y * size + x)
-                    .copied()
-                    .unwrap_or(0) as f32;
+                let pixel = aligned_face.get(y * size + x).copied().unwrap_or(0) as f32;
 
                 let normalized = (pixel - ARCFACE_MEAN) / ARCFACE_STD;
                 // Grayscale → 3-channel: replicate Y → [R=Y, G=Y, B=Y]
@@ -137,7 +139,10 @@ mod tests {
     fn test_preprocess_output_shape() {
         let aligned = vec![128u8; ARCFACE_INPUT_SIZE * ARCFACE_INPUT_SIZE];
         let tensor = FaceRecognizer::preprocess(&aligned);
-        assert_eq!(tensor.shape(), &[1, 3, ARCFACE_INPUT_SIZE, ARCFACE_INPUT_SIZE]);
+        assert_eq!(
+            tensor.shape(),
+            &[1, 3, ARCFACE_INPUT_SIZE, ARCFACE_INPUT_SIZE]
+        );
     }
 
     #[test]
@@ -148,7 +153,10 @@ mod tests {
         // 128 - 127.5 = 0.5, / 127.5 ≈ 0.00392
         let val = tensor[[0, 0, 0, 0]];
         let expected = (128.0 - ARCFACE_MEAN) / ARCFACE_STD;
-        assert!((val - expected).abs() < 1e-6, "got {val}, expected {expected}");
+        assert!(
+            (val - expected).abs() < 1e-6,
+            "got {val}, expected {expected}"
+        );
     }
 
     #[test]
@@ -172,8 +180,12 @@ mod tests {
         // Cannot test full extract without a loaded model, but we can verify
         // that missing landmarks returns the correct error.
         let face = BoundingBox {
-            x: 0.0, y: 0.0, width: 100.0, height: 100.0,
-            confidence: 0.9, landmarks: None,
+            x: 0.0,
+            y: 0.0,
+            width: 100.0,
+            height: 100.0,
+            confidence: 0.9,
+            landmarks: None,
         };
         // We can't construct a FaceRecognizer without a model file,
         // so just verify the NoLandmarks check at the type level.

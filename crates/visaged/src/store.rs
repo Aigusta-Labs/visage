@@ -7,8 +7,11 @@ use aes_gcm::{
     aead::{Aead, KeyInit},
     Aes256Gcm, Key, Nonce,
 };
-use rand::RngCore;
 use rand::rngs::OsRng;
+use rand::RngCore;
+
+const EMBEDDING_DIM: usize = 512;
+const EMBEDDING_BYTE_LEN: usize = EMBEDDING_DIM * 4;
 
 #[derive(Error, Debug)]
 pub enum StoreError {
@@ -22,6 +25,10 @@ pub enum StoreError {
     DecryptionFailed,
     #[error("invalid embedding blob size: {0} bytes")]
     InvalidBlob(usize),
+    #[error("invalid embedding dimension: {0} (expected 512)")]
+    InvalidEmbeddingDim(usize),
+    #[error("invalid embedding value (NaN/Inf)")]
+    InvalidEmbeddingValue,
     #[error("encryption key I/O error: {0}")]
     KeyIo(#[source] std::io::Error),
 }
@@ -100,6 +107,7 @@ impl FaceModelStore {
         let created_at = chrono::Utc::now().to_rfc3339();
 
         // Encrypt before entering the SQLite closure
+        validate_embedding_values(&embedding.values)?;
         let blob = self.encrypt_embedding(&embedding.values)?;
 
         let id_clone = id.clone();
@@ -221,6 +229,7 @@ impl FaceModelStore {
     ///
     /// Output: 12-byte random nonce || ciphertext || 16-byte GCM tag.
     fn encrypt_embedding(&self, values: &[f32]) -> Result<Vec<u8>, StoreError> {
+        validate_embedding_values(values)?;
         let plaintext = embedding_to_bytes(values);
 
         let mut nonce_bytes = [0u8; 12];
@@ -245,12 +254,11 @@ impl FaceModelStore {
     /// Accepts the legacy plaintext format (512 × 4 = 2048 bytes) and the
     /// current encrypted format (12-byte nonce + ciphertext + 16-byte GCM tag).
     fn decrypt_embedding(&self, blob: &[u8]) -> Result<Vec<f32>, StoreError> {
-        const PLAIN_LEN: usize = 512 * 4; // legacy: raw f32 little-endian bytes
         const NONCE_LEN: usize = 12;
 
-        if blob.len() == PLAIN_LEN {
+        if blob.len() == EMBEDDING_BYTE_LEN {
             // Legacy plaintext — accept transparently; re-enrolled next time
-            return Ok(bytes_to_embedding(blob));
+            return bytes_to_embedding_strict(blob);
         }
 
         if blob.len() <= NONCE_LEN {
@@ -266,7 +274,7 @@ impl FaceModelStore {
             .decrypt(nonce, ciphertext)
             .map_err(|_| StoreError::DecryptionFailed)?;
 
-        Ok(bytes_to_embedding(&plaintext))
+        bytes_to_embedding_strict(&plaintext)
     }
 }
 
@@ -319,11 +327,38 @@ fn embedding_to_bytes(values: &[f32]) -> Vec<u8> {
     bytes
 }
 
-fn bytes_to_embedding(bytes: &[u8]) -> Vec<f32> {
-    bytes
-        .chunks_exact(4)
-        .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
-        .collect()
+fn bytes_to_embedding_strict(bytes: &[u8]) -> Result<Vec<f32>, StoreError> {
+    if bytes.len() != EMBEDDING_BYTE_LEN {
+        return Err(StoreError::InvalidBlob(bytes.len()));
+    }
+
+    let mut values = Vec::with_capacity(EMBEDDING_DIM);
+    for chunk in bytes.chunks_exact(4) {
+        let arr: [u8; 4] = chunk
+            .try_into()
+            .map_err(|_| StoreError::InvalidBlob(bytes.len()))?;
+        let v = f32::from_le_bytes(arr);
+        if !v.is_finite() {
+            return Err(StoreError::InvalidEmbeddingValue);
+        }
+        values.push(v);
+    }
+
+    if values.len() != EMBEDDING_DIM {
+        return Err(StoreError::InvalidEmbeddingDim(values.len()));
+    }
+
+    Ok(values)
+}
+
+fn validate_embedding_values(values: &[f32]) -> Result<(), StoreError> {
+    if values.len() != EMBEDDING_DIM {
+        return Err(StoreError::InvalidEmbeddingDim(values.len()));
+    }
+    if values.iter().any(|v| !v.is_finite()) {
+        return Err(StoreError::InvalidEmbeddingValue);
+    }
+    Ok(())
 }
 
 // ── Public types ──────────────────────────────────────────────────────────────
@@ -349,7 +384,9 @@ mod tests {
         let store = FaceModelStore::open(Path::new(":memory:")).await.unwrap();
 
         let embedding = Embedding {
-            values: vec![0.1, 0.2, 0.3, 0.4, 0.5],
+            values: (0..EMBEDDING_DIM)
+                .map(|i| i as f32 / EMBEDDING_DIM as f32)
+                .collect(),
             model_version: Some("w600k_r50".to_string()),
         };
 
@@ -364,7 +401,7 @@ mod tests {
         assert_eq!(gallery[0].id, id);
         assert_eq!(gallery[0].user, "alice");
         assert_eq!(gallery[0].label, "default");
-        assert_eq!(gallery[0].embedding.values, vec![0.1, 0.2, 0.3, 0.4, 0.5]);
+        assert_eq!(gallery[0].embedding.values, embedding.values);
         assert_eq!(
             gallery[0].embedding.model_version.as_deref(),
             Some("w600k_r50")
@@ -376,7 +413,7 @@ mod tests {
         let store = FaceModelStore::open(Path::new(":memory:")).await.unwrap();
 
         let emb = Embedding {
-            values: vec![1.0; 5],
+            values: vec![1.0; EMBEDDING_DIM],
             model_version: None,
         };
 
@@ -397,22 +434,55 @@ mod tests {
 
     #[tokio::test]
     async fn test_embedding_byte_fidelity() {
-        let values = vec![
-            0.0,
-            -0.0,
-            1.0,
-            -1.0,
-            f32::MIN_POSITIVE,
-            f32::EPSILON,
-            std::f32::consts::PI,
-            0.123456789,
-        ];
+        // Build a 512-dim vector with interesting values at specific positions
+        let mut values = vec![0.5f32; EMBEDDING_DIM];
+        values[0] = 0.0;
+        values[1] = -0.0;
+        values[2] = 1.0;
+        values[3] = -1.0;
+        values[4] = f32::MIN_POSITIVE;
+        values[5] = f32::EPSILON;
+        values[6] = std::f32::consts::PI;
+        values[7] = 0.123456789;
+
         let bytes = embedding_to_bytes(&values);
-        let recovered = bytes_to_embedding(&bytes);
+        let recovered = bytes_to_embedding_strict(&bytes).unwrap();
         assert_eq!(values.len(), recovered.len());
         for (orig, rec) in values.iter().zip(recovered.iter()) {
             assert_eq!(orig.to_bits(), rec.to_bits(), "mismatch: {orig} vs {rec}");
         }
+    }
+
+    #[tokio::test]
+    async fn test_strict_rejects_nan() {
+        let mut values = vec![0.5f32; EMBEDDING_DIM];
+        values[42] = f32::NAN;
+        let bytes = embedding_to_bytes(&values);
+        let err = bytes_to_embedding_strict(&bytes).unwrap_err();
+        assert!(matches!(err, StoreError::InvalidEmbeddingValue));
+    }
+
+    #[tokio::test]
+    async fn test_strict_rejects_infinity() {
+        let mut values = vec![0.5f32; EMBEDDING_DIM];
+        values[0] = f32::INFINITY;
+        let bytes = embedding_to_bytes(&values);
+        let err = bytes_to_embedding_strict(&bytes).unwrap_err();
+        assert!(matches!(err, StoreError::InvalidEmbeddingValue));
+    }
+
+    #[tokio::test]
+    async fn test_strict_rejects_wrong_length() {
+        let bytes = vec![0u8; 100]; // not 2048
+        let err = bytes_to_embedding_strict(&bytes).unwrap_err();
+        assert!(matches!(err, StoreError::InvalidBlob(100)));
+    }
+
+    #[tokio::test]
+    async fn test_validate_rejects_wrong_dimension() {
+        let values = vec![0.5f32; 256]; // not 512
+        let err = validate_embedding_values(&values).unwrap_err();
+        assert!(matches!(err, StoreError::InvalidEmbeddingDim(256)));
     }
 
     #[tokio::test]
@@ -450,7 +520,10 @@ mod tests {
             enc_key: [2u8; 32],
         };
 
-        let blob = store1.encrypt_embedding(&[0.1, 0.2, 0.3]).unwrap();
+        let values: Vec<f32> = (0..EMBEDDING_DIM)
+            .map(|i| i as f32 / EMBEDDING_DIM as f32)
+            .collect();
+        let blob = store1.encrypt_embedding(&values).unwrap();
         assert!(store2.decrypt_embedding(&blob).is_err());
     }
 
@@ -459,7 +532,7 @@ mod tests {
         let store = FaceModelStore::open(Path::new(":memory:")).await.unwrap();
 
         let emb = Embedding {
-            values: vec![1.0; 5],
+            values: vec![1.0; EMBEDDING_DIM],
             model_version: Some("v1".to_string()),
         };
 

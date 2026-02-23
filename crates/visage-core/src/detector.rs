@@ -62,7 +62,11 @@ impl FaceDetector {
             .with_intra_threads(2)?
             .commit_from_file(model_path)?;
 
-        let output_names: Vec<String> = session.outputs().iter().map(|o| o.name().to_string()).collect();
+        let output_names: Vec<String> = session
+            .outputs()
+            .iter()
+            .map(|o| o.name().to_string())
+            .collect();
         let num_outputs = output_names.len();
 
         tracing::info!(
@@ -102,7 +106,9 @@ impl FaceDetector {
     ) -> Result<Vec<BoundingBox>, DetectorError> {
         let (input, letterbox) = self.preprocess(frame, width as usize, height as usize);
 
-        let outputs = self.session.run(ort::inputs![TensorRef::from_array_view(input.view())?])?;
+        let outputs = self
+            .session
+            .run(ort::inputs![TensorRef::from_array_view(input.view())?])?;
 
         let mut all_detections = Vec::new();
 
@@ -111,10 +117,12 @@ impl FaceDetector {
 
             let (_, scores) = outputs[score_idx]
                 .try_extract_tensor::<f32>()
-                .map_err(|e| DetectorError::InferenceFailed(format!("scores stride {stride}: {e}")))?;
-            let (_, bboxes) = outputs[bbox_idx]
-                .try_extract_tensor::<f32>()
-                .map_err(|e| DetectorError::InferenceFailed(format!("bboxes stride {stride}: {e}")))?;
+                .map_err(|e| {
+                    DetectorError::InferenceFailed(format!("scores stride {stride}: {e}"))
+                })?;
+            let (_, bboxes) = outputs[bbox_idx].try_extract_tensor::<f32>().map_err(|e| {
+                DetectorError::InferenceFailed(format!("bboxes stride {stride}: {e}"))
+            })?;
             let (_, kps) = outputs[kps_idx]
                 .try_extract_tensor::<f32>()
                 .map_err(|e| DetectorError::InferenceFailed(format!("kps stride {stride}: {e}")))?;
@@ -162,7 +170,11 @@ impl FaceDetector {
         let pad_x = (self.input_width - new_w) as f32 / 2.0;
         let pad_y = (self.input_height - new_h) as f32 / 2.0;
 
-        let letterbox = LetterboxInfo { scale, pad_x, pad_y };
+        let letterbox = LetterboxInfo {
+            scale,
+            pad_x,
+            pad_y,
+        };
 
         // Resize grayscale using bilinear interpolation for sub-pixel accuracy.
         let inv_scale = 1.0 / scale;
@@ -399,7 +411,12 @@ mod tests {
 
     fn make_bbox(x: f32, y: f32, w: f32, h: f32, conf: f32) -> BoundingBox {
         BoundingBox {
-            x, y, width: w, height: h, confidence: conf, landmarks: None,
+            x,
+            y,
+            width: w,
+            height: h,
+            confidence: conf,
+            landmarks: None,
         }
     }
 
@@ -466,7 +483,11 @@ mod tests {
         let pad_x = (640.0 - new_w) / 2.0;
         let pad_y = (640.0 - new_h) / 2.0;
 
-        let letterbox = LetterboxInfo { scale, pad_x, pad_y };
+        let letterbox = LetterboxInfo {
+            scale,
+            pad_x,
+            pad_y,
+        };
 
         let orig_x = 100.0f32;
         let orig_y = 50.0f32;
@@ -476,17 +497,25 @@ mod tests {
         let recovered_x = (letterboxed_x - letterbox.pad_x) / letterbox.scale;
         let recovered_y = (letterboxed_y - letterbox.pad_y) / letterbox.scale;
 
-        assert!((recovered_x - orig_x).abs() < 0.1, "x: {recovered_x} vs {orig_x}");
-        assert!((recovered_y - orig_y).abs() < 0.1, "y: {recovered_y} vs {orig_y}");
+        assert!(
+            (recovered_x - orig_x).abs() < 0.1,
+            "x: {recovered_x} vs {orig_x}"
+        );
+        assert!(
+            (recovered_y - orig_y).abs() < 0.1,
+            "y: {recovered_y} vs {orig_y}"
+        );
     }
 
     #[test]
     fn test_discover_output_indices_named() {
         let names: Vec<String> = [
-            "score_8", "score_16", "score_32",
-            "bbox_8",  "bbox_16",  "bbox_32",
-            "kps_8",   "kps_16",   "kps_32",
-        ].iter().map(|s| s.to_string()).collect();
+            "score_8", "score_16", "score_32", "bbox_8", "bbox_16", "bbox_32", "kps_8", "kps_16",
+            "kps_32",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
 
         let indices = discover_output_indices(&names);
 
@@ -502,10 +531,12 @@ mod tests {
     fn test_discover_output_indices_shuffled_named() {
         // Named but in non-standard order
         let names: Vec<String> = [
-            "bbox_8", "kps_8", "score_8",
-            "bbox_16", "kps_16", "score_16",
-            "bbox_32", "kps_32", "score_32",
-        ].iter().map(|s| s.to_string()).collect();
+            "bbox_8", "kps_8", "score_8", "bbox_16", "kps_16", "score_16", "bbox_32", "kps_32",
+            "score_32",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
 
         let indices = discover_output_indices(&names);
 
@@ -559,6 +590,9 @@ mod tests {
         }
 
         // All pixels should be 128 (uniform input stays uniform)
-        assert!(resized.iter().all(|&p| p == 128), "uniform resize should stay uniform");
+        assert!(
+            resized.iter().all(|&p| p == 128),
+            "uniform resize should stay uniform"
+        );
     }
 }

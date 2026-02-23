@@ -2,7 +2,7 @@
 # Contributor: https://github.com/sovren-software/visage
 
 pkgname=visage
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="Linux face authentication via PAM — persistent daemon, IR camera support, ONNX inference"
 arch=('x86_64')
@@ -12,7 +12,7 @@ depends=('pam' 'dbus')
 makedepends=('rust' 'cargo' 'pkg-config')
 install="$pkgname.install"
 source=("$pkgname-$pkgver.tar.gz::https://github.com/sovren-software/visage/archive/refs/tags/v$pkgver.tar.gz")
-# Update sha256sum after computing: sha256sum visage-0.1.0.tar.gz
+# Update sha256sum after computing: sha256sum visage-0.2.0.tar.gz
 sha256sums=('SKIP')
 
 build() {

@@ -23,7 +23,7 @@ Supported cameras: see [Hardware Compatibility](#hardware-compatibility).
 
 ```bash
 # 1. Install the package
-sudo apt install ./visage_0.1.0_amd64.deb
+sudo apt install ./visage_0.2.0_amd64.deb
 
 # 2. Download ONNX models (~182 MB, requires internet)
 sudo visage setup
@@ -36,7 +36,7 @@ sudo echo "face auth works"
 ```
 
 After step 4, pressing Enter should authenticate via face recognition. If no face is
-detected within 10 seconds, the system falls back to your password prompt.
+detected quickly, the system falls back to your password prompt.
 
 ### Build from source
 
@@ -117,7 +117,11 @@ Face auth is automatically active after installation. When you run a command req
 1. Activates your IR emitter (if supported)
 2. Captures 3 frames and runs face recognition
 3. On match: proceeds immediately
-4. On no-match or timeout (10s): falls through to your password prompt
+4. On no-match or timeout (~3s): falls through to your password prompt
+
+The PAM module enforces a 3-second D-Bus method timeout to avoid login hangs. The daemon's
+internal verify timeout (default 10s) is controlled by `VISAGE_VERIFY_TIMEOUT_SECS` and is
+used by non-PAM clients such as the CLI.
 
 No extra steps required. The PAM module is configured system-wide via `pam-auth-update`.
 
@@ -130,7 +134,7 @@ visage list
 # Verify interactively (exits 0 on match, 1 on no-match)
 visage verify
 
-# Show daemon status (models loaded, camera open, uptime)
+# Show daemon status
 visage status
 
 # Remove a specific model
@@ -450,8 +454,8 @@ and re-enroll after reinstalling.
 ## Security Notes
 
 - The face database (`/var/lib/visage/faces.db`) is root-readable only.
-  Embeddings are stored as raw float32 vectors and are not encrypted. Full-disk
-  encryption (e.g., LUKS) is recommended for sensitive environments.
+  Embeddings are encrypted at rest (AES-256-GCM). Full-disk
+  encryption (e.g., LUKS) is still recommended for sensitive environments.
 - The daemon runs as root with a restrictive systemd sandbox (`ProtectSystem=strict`,
   `NoNewPrivileges=true`, `PrivateTmp=true`).
 - PAM integration always falls back to password on any error or timeout (`PAM_IGNORE`).

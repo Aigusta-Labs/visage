@@ -39,7 +39,11 @@ impl Embedding {
         let denom = norm_a.sqrt() * norm_b.sqrt();
         // Constant-time: always compute, use conditional assignment
         // rather than early return to avoid timing side-channel.
-        if denom > 0.0 { dot / denom } else { 0.0 }
+        if denom > 0.0 {
+            dot / denom
+        } else {
+            0.0
+        }
     }
 
     /// Alias for [`similarity`](Self::similarity) — cosine similarity in [-1, 1].
@@ -115,7 +119,11 @@ impl Matcher for CosineMatcher {
             },
             _ => MatchResult {
                 matched: false,
-                similarity: if best_sim == f32::NEG_INFINITY { 0.0 } else { best_sim },
+                similarity: if best_sim == f32::NEG_INFINITY {
+                    0.0
+                } else {
+                    best_sim
+                },
                 model_id: None,
                 model_label: None,
             },
@@ -129,50 +137,92 @@ mod tests {
 
     #[test]
     fn test_cosine_similarity_identical() {
-        let a = Embedding { values: vec![1.0, 0.0, 0.0], model_version: None };
-        let b = Embedding { values: vec![1.0, 0.0, 0.0], model_version: None };
+        let a = Embedding {
+            values: vec![1.0, 0.0, 0.0],
+            model_version: None,
+        };
+        let b = Embedding {
+            values: vec![1.0, 0.0, 0.0],
+            model_version: None,
+        };
         assert!((a.similarity(&b) - 1.0).abs() < 1e-6);
     }
 
     #[test]
     fn test_cosine_similarity_orthogonal() {
-        let a = Embedding { values: vec![1.0, 0.0], model_version: None };
-        let b = Embedding { values: vec![0.0, 1.0], model_version: None };
+        let a = Embedding {
+            values: vec![1.0, 0.0],
+            model_version: None,
+        };
+        let b = Embedding {
+            values: vec![0.0, 1.0],
+            model_version: None,
+        };
         assert!(a.similarity(&b).abs() < 1e-6);
     }
 
     #[test]
     fn test_cosine_similarity_opposite() {
-        let a = Embedding { values: vec![1.0, 0.0], model_version: None };
-        let b = Embedding { values: vec![-1.0, 0.0], model_version: None };
+        let a = Embedding {
+            values: vec![1.0, 0.0],
+            model_version: None,
+        };
+        let b = Embedding {
+            values: vec![-1.0, 0.0],
+            model_version: None,
+        };
         assert!((a.similarity(&b) + 1.0).abs() < 1e-6);
     }
 
     #[test]
     fn test_cosine_similarity_zero_vector() {
-        let a = Embedding { values: vec![0.0, 0.0], model_version: None };
-        let b = Embedding { values: vec![1.0, 0.0], model_version: None };
+        let a = Embedding {
+            values: vec![0.0, 0.0],
+            model_version: None,
+        };
+        let b = Embedding {
+            values: vec![1.0, 0.0],
+            model_version: None,
+        };
         assert_eq!(a.similarity(&b), 0.0);
     }
 
     #[test]
     fn test_cosine_matcher_constant_time() {
         // Verify all gallery entries are compared (best match is last entry)
-        let probe = Embedding { values: vec![1.0, 0.0, 0.0], model_version: None };
+        let probe = Embedding {
+            values: vec![1.0, 0.0, 0.0],
+            model_version: None,
+        };
         let gallery = vec![
             FaceModel {
-                id: "1".into(), user: "u".into(), label: "decoy1".into(),
-                embedding: Embedding { values: vec![0.0, 1.0, 0.0], model_version: None },
+                id: "1".into(),
+                user: "u".into(),
+                label: "decoy1".into(),
+                embedding: Embedding {
+                    values: vec![0.0, 1.0, 0.0],
+                    model_version: None,
+                },
                 created_at: "".into(),
             },
             FaceModel {
-                id: "2".into(), user: "u".into(), label: "decoy2".into(),
-                embedding: Embedding { values: vec![0.0, 0.0, 1.0], model_version: None },
+                id: "2".into(),
+                user: "u".into(),
+                label: "decoy2".into(),
+                embedding: Embedding {
+                    values: vec![0.0, 0.0, 1.0],
+                    model_version: None,
+                },
                 created_at: "".into(),
             },
             FaceModel {
-                id: "3".into(), user: "u".into(), label: "match".into(),
-                embedding: Embedding { values: vec![1.0, 0.0, 0.0], model_version: None },
+                id: "3".into(),
+                user: "u".into(),
+                label: "match".into(),
+                embedding: Embedding {
+                    values: vec![1.0, 0.0, 0.0],
+                    model_version: None,
+                },
                 created_at: "".into(),
             },
         ];
@@ -186,14 +236,20 @@ mod tests {
 
     #[test]
     fn test_cosine_matcher_no_match() {
-        let probe = Embedding { values: vec![1.0, 0.0, 0.0], model_version: None };
-        let gallery = vec![
-            FaceModel {
-                id: "1".into(), user: "u".into(), label: "other".into(),
-                embedding: Embedding { values: vec![0.0, 1.0, 0.0], model_version: None },
-                created_at: "".into(),
+        let probe = Embedding {
+            values: vec![1.0, 0.0, 0.0],
+            model_version: None,
+        };
+        let gallery = vec![FaceModel {
+            id: "1".into(),
+            user: "u".into(),
+            label: "other".into(),
+            embedding: Embedding {
+                values: vec![0.0, 1.0, 0.0],
+                model_version: None,
             },
-        ];
+            created_at: "".into(),
+        }];
 
         let result = CosineMatcher.compare(&probe, &gallery, 0.5);
         assert!(!result.matched);
@@ -202,7 +258,10 @@ mod tests {
 
     #[test]
     fn test_cosine_matcher_empty_gallery() {
-        let probe = Embedding { values: vec![1.0, 0.0], model_version: None };
+        let probe = Embedding {
+            values: vec![1.0, 0.0],
+            model_version: None,
+        };
         let result = CosineMatcher.compare(&probe, &[], 0.5);
         assert!(!result.matched);
         assert_eq!(result.similarity, 0.0);

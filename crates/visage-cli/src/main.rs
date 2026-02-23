@@ -2,6 +2,7 @@ mod setup;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use std::time::Duration;
 
 #[zbus::proxy(
     interface = "org.freedesktop.Visage1",
@@ -82,18 +83,29 @@ fn current_user() -> String {
     std::env::var("USER").unwrap_or_else(|_| "unknown".to_string())
 }
 
+fn verify_timeout_secs() -> u64 {
+    std::env::var("VISAGE_VERIFY_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(10)
+}
+
 async fn connect_proxy() -> Result<VisageProxy<'static>> {
     let use_session = std::env::var("VISAGE_SESSION_BUS").is_ok();
+    let timeout = Duration::from_secs(verify_timeout_secs());
     let conn = if use_session {
-        zbus::Connection::session().await
+        zbus::connection::Builder::session()?
     } else {
-        zbus::Connection::system().await
+        zbus::connection::Builder::system()?
     }
+    .method_timeout(timeout)
+    .build()
+    .await
     .map_err(|e| anyhow::anyhow!("failed to connect to D-Bus: {e}"))?;
 
-    let proxy = VisageProxy::new(&conn).await.map_err(|e| {
-        anyhow::anyhow!("failed to create proxy: {e} — is visaged running?")
-    })?;
+    let proxy = VisageProxy::new(&conn)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to create proxy: {e} — is visaged running?"))?;
     Ok(proxy)
 }
 
@@ -191,8 +203,17 @@ async fn main() -> Result<()> {
                 Ok(json) => {
                     let status: serde_json::Value = serde_json::from_str(&json)?;
                     println!("visaged status:");
-                    println!("  version:    {}", status["version"].as_str().unwrap_or("?"));
+                    println!(
+                        "  version:    {}",
+                        status["version"].as_str().unwrap_or("?")
+                    );
                     println!("  camera:     {}", status["camera"].as_str().unwrap_or("?"));
+                    if let Some(model_dir) = status.get("model_dir").and_then(|v| v.as_str()) {
+                        println!("  model_dir:  {model_dir}");
+                    }
+                    if let Some(db_path) = status.get("db_path").and_then(|v| v.as_str()) {
+                        println!("  db_path:    {db_path}");
+                    }
                     println!(
                         "  models:     {}",
                         status["models_enrolled"].as_u64().unwrap_or(0)
@@ -201,6 +222,21 @@ async fn main() -> Result<()> {
                         "  threshold:  {:.2}",
                         status["similarity_threshold"].as_f64().unwrap_or(0.0)
                     );
+                    if let Some(v) = status.get("verify_timeout_secs").and_then(|v| v.as_u64()) {
+                        println!("  timeout:    {v}s");
+                    }
+                    if let Some(v) = status.get("frames_per_verify").and_then(|v| v.as_u64()) {
+                        println!("  verify_n:   {v} frame(s)");
+                    }
+                    if let Some(v) = status.get("frames_per_enroll").and_then(|v| v.as_u64()) {
+                        println!("  enroll_n:   {v} frame(s)");
+                    }
+                    if let Some(v) = status.get("emitter_enabled").and_then(|v| v.as_bool()) {
+                        println!("  emitter:    {}", if v { "enabled" } else { "disabled" });
+                    }
+                    if let Some(v) = status.get("session_bus").and_then(|v| v.as_bool()) {
+                        println!("  bus:        {}", if v { "session" } else { "system" });
+                    }
                 }
                 Err(e) => {
                     eprintln!("visaged: not reachable — {e}");
@@ -218,7 +254,7 @@ async fn main() -> Result<()> {
 }
 
 fn cmd_discover() {
-    use visage_hw::quirks::{get_usb_ids, is_ipu6_camera, lookup_quirk, get_driver};
+    use visage_hw::quirks::{get_driver, get_usb_ids, is_ipu6_camera, lookup_quirk};
 
     let mut entries: Vec<_> = std::fs::read_dir("/dev")
         .expect("cannot read /dev")
@@ -257,7 +293,9 @@ fn cmd_discover() {
                     Some(q) => format!("quirk: {} \u{2713}", q.device.name),
                     None => format!("no quirk (VID={vid:#06x} PID={pid:#06x})"),
                 };
-                println!("{path}  driver={driver_label}  VID={vid:#06x} PID={pid:#06x}  {quirk_status}");
+                println!(
+                    "{path}  driver={driver_label}  VID={vid:#06x} PID={pid:#06x}  {quirk_status}"
+                );
             }
             None => {
                 let driver_label = driver.as_deref().unwrap_or("unknown");
@@ -329,7 +367,10 @@ fn run_camera_test(device_path: &str, frame_count: usize) -> Result<()> {
 
     // Summary
     if !captured_frames.is_empty() {
-        let avg: f32 = captured_frames.iter().map(|f| f.avg_brightness()).sum::<f32>()
+        let avg: f32 = captured_frames
+            .iter()
+            .map(|f| f.avg_brightness())
+            .sum::<f32>()
             / captured_frames.len() as f32;
         println!("\nAverage brightness: {avg:.1}");
     }

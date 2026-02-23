@@ -1,3 +1,4 @@
+use nix::unistd::User;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use zbus::interface;
@@ -24,10 +25,7 @@ pub struct VisageService {
 }
 
 /// Retrieve the UID of the D-Bus peer identified by `sender_str` (a unique bus name).
-async fn get_caller_uid(
-    sender_str: &str,
-    conn: &zbus::Connection,
-) -> zbus::fdo::Result<u32> {
+async fn get_caller_uid(sender_str: &str, conn: &zbus::Connection) -> zbus::fdo::Result<u32> {
     let dbus_proxy = zbus::fdo::DBusProxy::new(conn)
         .await
         .map_err(|e| zbus::fdo::Error::Failed(e.to_string()))?;
@@ -39,20 +37,13 @@ async fn get_caller_uid(
         .map_err(|e| zbus::fdo::Error::Failed(e.to_string()))
 }
 
-/// Look up the numeric UID for a local username by parsing `/etc/passwd`.
+/// Look up the numeric UID for a username via NSS.
 fn uid_for_name(name: &str) -> Option<u32> {
-    let contents = std::fs::read_to_string("/etc/passwd").ok()?;
-    for line in contents.lines() {
-        let mut parts = line.split(':');
-        let uname = parts.next()?;
-        if uname != name {
-            continue;
-        }
-        parts.next(); // password field
-        let uid_str = parts.next()?;
-        return uid_str.parse().ok();
+    match User::from_name(name) {
+        Ok(Some(user)) => Some(user.uid.as_raw()),
+        Ok(None) => None,
+        Err(_) => None,
     }
-    None
 }
 
 #[interface(name = "org.freedesktop.Visage1")]
@@ -75,7 +66,10 @@ impl VisageService {
             zbus::fdo::Error::Failed(e.to_string())
         })?;
 
-        tracing::info!(quality = result.quality_score, "enroll: embedding extracted");
+        tracing::info!(
+            quality = result.quality_score,
+            "enroll: embedding extracted"
+        );
 
         // Store result (re-acquire lock)
         let state = self.state.lock().await;
@@ -131,9 +125,7 @@ impl VisageService {
                     }
                     None => {
                         tracing::warn!(user, "verify: unknown user");
-                        return Err(zbus::fdo::Error::Failed(format!(
-                            "unknown user '{user}'"
-                        )));
+                        return Err(zbus::fdo::Error::Failed(format!("unknown user '{user}'")));
                     }
                 }
             }
@@ -212,8 +204,16 @@ impl VisageService {
         Ok(serde_json::json!({
             "version": env!("CARGO_PKG_VERSION"),
             "camera": state.config.camera_device,
+            "model_dir": state.config.model_dir.display().to_string(),
+            "db_path": state.config.db_path.display().to_string(),
             "models_enrolled": model_count,
             "similarity_threshold": state.config.similarity_threshold,
+            "verify_timeout_secs": state.config.verify_timeout_secs,
+            "warmup_frames": state.config.warmup_frames,
+            "frames_per_verify": state.config.frames_per_verify,
+            "frames_per_enroll": state.config.frames_per_enroll,
+            "emitter_enabled": state.config.emitter_enabled,
+            "session_bus": state.config.session_bus,
         })
         .to_string())
     }

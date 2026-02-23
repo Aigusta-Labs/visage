@@ -73,7 +73,10 @@ async fn main() -> Result<()> {
     .await?;
 
     let bus_name = if session_bus { "session" } else { "system" };
-    tracing::info!(bus = bus_name, "visaged ready — listening on org.freedesktop.Visage1");
+    tracing::info!(
+        bus = bus_name,
+        "visaged ready — listening on org.freedesktop.Visage1"
+    );
 
     // 5. Wait for shutdown signal
     tokio::signal::ctrl_c().await?;

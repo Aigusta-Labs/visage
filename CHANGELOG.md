@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.2.0 — 2026-02-23
+
+### What's changed
+
+- **Enterprise identity compatibility** — D-Bus `Verify(user)` caller validation now resolves user IDs via NSS (LDAP/SSSD/AD compatible) instead of parsing `/etc/passwd`.
+- **CLI reliability** — `visage` CLI sets a D-Bus method timeout aligned with `VISAGE_VERIFY_TIMEOUT_SECS` (default 10s) to avoid indefinite hangs.
+- **Enrollment quality** — enrollment now averages embeddings across captured frames (confidence-weighted) and re-normalizes the result.
+- **Store hardening** — face DB blob parsing validates size/dimension and rejects NaN/Inf safely (no panics on corrupted blobs).
+- **Status output** — `Status()` JSON includes additional config fields (paths, timeouts, frame counts, emitter/session flags).
+
 ## v0.1.0 — 2026-02-23
 
 Initial release. All six implementation steps complete and end-to-end tested on Ubuntu 24.04.4 LTS.

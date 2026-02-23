@@ -32,7 +32,7 @@ Linux deserves a biometric authentication layer that is **reliable, secure, and 
 
 ---
 
-## Where We Are: v0.1.0
+## Where We Are: v0.2.0
 
 **Shipped 2026-02-23. All 6 implementation steps complete. End-to-end tested on Ubuntu 24.04.4 LTS.**
 

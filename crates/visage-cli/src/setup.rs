@@ -42,11 +42,10 @@ fn default_model_dir() -> PathBuf {
     if is_root() {
         PathBuf::from("/var/lib/visage/models")
     } else {
-        let data_home = std::env::var("XDG_DATA_HOME")
-            .unwrap_or_else(|_| {
-                let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-                format!("{home}/.local/share")
-            });
+        let data_home = std::env::var("XDG_DATA_HOME").unwrap_or_else(|_| {
+            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+            format!("{home}/.local/share")
+        });
         PathBuf::from(data_home).join("visage/models")
     }
 }
@@ -58,8 +57,8 @@ fn is_root() -> bool {
 
 /// Compute SHA-256 hex digest of a file.
 fn sha256_file(path: &Path) -> Result<String> {
-    let mut file = fs::File::open(path)
-        .with_context(|| format!("failed to open {}", path.display()))?;
+    let mut file =
+        fs::File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
     let mut hasher = Sha256::new();
     let mut buf = [0u8; 8192];
     loop {
@@ -134,8 +133,13 @@ fn download_model(model: &ModelFile, dest: &Path) -> Result<()> {
     println!("ok");
 
     // Atomic rename
-    fs::rename(&tmp_path, dest)
-        .with_context(|| format!("failed to rename {} -> {}", tmp_path.display(), dest.display()))?;
+    fs::rename(&tmp_path, dest).with_context(|| {
+        format!(
+            "failed to rename {} -> {}",
+            tmp_path.display(),
+            dest.display()
+        )
+    })?;
 
     Ok(())
 }
@@ -166,7 +170,10 @@ pub fn run(model_dir: Option<String>) -> Result<()> {
                     continue;
                 }
                 Ok(_) => {
-                    println!("  {} exists but checksum differs — re-downloading", model.name);
+                    println!(
+                        "  {} exists but checksum differs — re-downloading",
+                        model.name
+                    );
                 }
                 Err(_) => {
                     println!("  {} exists but unreadable — re-downloading", model.name);

@@ -170,14 +170,15 @@ fn warp_affine(
 /// Takes a grayscale frame and five detected facial landmarks, computes the
 /// similarity transform to reference positions, and warps the face region
 /// into a 112×112 aligned output suitable for ArcFace embedding extraction.
-pub fn align_face(
-    frame: &[u8],
-    width: u32,
-    height: u32,
-    landmarks: &[(f32, f32); 5],
-) -> Vec<u8> {
+pub fn align_face(frame: &[u8], width: u32, height: u32, landmarks: &[(f32, f32); 5]) -> Vec<u8> {
     let matrix = estimate_similarity_transform(landmarks, &REFERENCE_LANDMARKS_112);
-    warp_affine(frame, width as usize, height as usize, &matrix, ALIGNED_SIZE)
+    warp_affine(
+        frame,
+        width as usize,
+        height as usize,
+        &matrix,
+        ALIGNED_SIZE,
+    )
 }
 
 #[cfg(test)]
@@ -282,6 +283,9 @@ mod tests {
                 }
             }
         }
-        assert!(max_val > 100, "Expected bright patch near reference left eye ({ref_x}, {ref_y}), max={max_val}");
+        assert!(
+            max_val > 100,
+            "Expected bright patch near reference left eye ({ref_x}, {ref_y}), max={max_val}"
+        );
     }
 }

@@ -159,8 +159,13 @@ pub fn spawn_engine(
                         frames_count,
                         reply,
                     } => {
-                        let result =
-                            run_enroll(&camera, &emitter, &mut detector, &mut recognizer, frames_count);
+                        let result = run_enroll(
+                            &camera,
+                            &emitter,
+                            &mut detector,
+                            &mut recognizer,
+                            frames_count,
+                        );
                         let _ = reply.send(result);
                     }
                     EngineRequest::Verify {
@@ -215,7 +220,8 @@ fn deactivate_emitter(emitter: &Option<IrEmitter>) {
     }
 }
 
-/// Capture frames, pick the best face (highest confidence), extract embedding.
+/// Capture frames, extract embeddings from all detected faces, and return
+/// a confidence-weighted average embedding (L2-normalized).
 fn run_enroll(
     camera: &Camera,
     emitter: &Option<IrEmitter>,
@@ -238,32 +244,73 @@ fn run_enroll(
         return Err(EngineError::NoFaceDetected);
     }
 
-    // Find the frame with the best (highest confidence) face detection
-    let mut best_face = None;
+    let mut embeddings: Vec<(Embedding, f32)> = Vec::new();
     let mut best_confidence = 0.0f32;
-    let mut best_frame_idx = 0;
+    let mut best_frame_idx = 0usize;
 
     for (i, frame) in frames.iter().enumerate() {
         let faces = detector.detect(&frame.data, frame.width, frame.height)?;
-        if let Some(face) = faces.first() {
-            if face.confidence > best_confidence {
-                best_confidence = face.confidence;
-                best_face = Some(face.clone());
-                best_frame_idx = i;
-            }
+        let Some(face) = faces.first() else {
+            continue;
+        };
+
+        let embedding = match recognizer.extract(&frame.data, frame.width, frame.height, face) {
+            Ok(embedding) => embedding,
+            Err(visage_core::recognizer::RecognizerError::NoLandmarks) => continue,
+            Err(e) => return Err(e.into()),
+        };
+
+        let weight = face.confidence.max(0.0);
+        if weight > best_confidence {
+            best_confidence = weight;
+            best_frame_idx = i;
         }
+
+        embeddings.push((embedding, weight));
     }
 
-    let face = best_face.ok_or(EngineError::NoFaceDetected)?;
-    let frame = &frames[best_frame_idx];
+    if embeddings.is_empty() {
+        return Err(EngineError::NoFaceDetected);
+    }
 
     tracing::info!(
-        confidence = face.confidence,
+        confidence = best_confidence,
         frame = best_frame_idx,
         "enroll: best face selected"
     );
 
-    let embedding = recognizer.extract(&frame.data, frame.width, frame.height, &face)?;
+    let dim = embeddings[0].0.values.len();
+
+    let total_weight: f32 = embeddings.iter().map(|(_, w)| *w).sum();
+    let (denom, use_weighted) = if total_weight > 0.0 {
+        (total_weight, true)
+    } else {
+        (embeddings.len() as f32, false)
+    };
+
+    let mut avg = vec![0.0f32; dim];
+    for (emb, w) in &embeddings {
+        let w = if use_weighted { *w } else { 1.0 };
+        for (a, v) in avg.iter_mut().zip(emb.values.iter()) {
+            *a += v * w;
+        }
+    }
+    for v in &mut avg {
+        *v /= denom;
+    }
+
+    // L2-normalize the averaged embedding
+    let norm: f32 = avg.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if norm > 0.0 {
+        for v in &mut avg {
+            *v /= norm;
+        }
+    }
+
+    let embedding = Embedding {
+        values: avg,
+        model_version: embeddings[0].0.model_version.clone(),
+    };
 
     Ok(EnrollResult {
         embedding,
@@ -273,6 +320,7 @@ fn run_enroll(
 
 /// Capture frames, detect faces, extract embeddings, compare against gallery.
 /// Uses the best match across all captured frames.
+#[allow(clippy::too_many_arguments)]
 fn run_verify(
     camera: &Camera,
     emitter: &Option<IrEmitter>,

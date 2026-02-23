@@ -30,7 +30,7 @@ multi-binary packages without needing a separate packaging crate.
 ### 2. Daemon runs as root with systemd hardening
 
 **Decision:** visaged runs as root, protected by `ProtectSystem=strict`, `ProtectHome=true`,
-`NoNewPrivileges=true`, `PrivateTmp=true`, and `DeviceAllow=/dev/video* rw`.
+`NoNewPrivileges=true`, `PrivateTmp=true`, and `DeviceAllow=char-video4linux rw`.
 
 **Rationale:** Matches fprintd precedent. Running as a dedicated user would require udev rules
 for camera access and group management — complexity deferred to v3.
@@ -63,7 +63,8 @@ stdout/stderr automatically.
 `ListModels` are implicitly restricted to root (no `<allow>` in default context).
 
 **Rationale:** Sufficient for v2. In-method UID checks via `GetConnectionCredentials` are
-deferred to v3.
+deferred to v3. v0.2 performs in-method caller UID validation via D-Bus UNIX UID lookup
+(`GetConnectionUnixUser`) and an NSS-backed username→UID resolution.
 
 ### 7. PAM conversation: success feedback only
 

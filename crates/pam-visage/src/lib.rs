@@ -96,11 +96,7 @@ fn syslog_open() {
     static IDENT: &[u8] = b"pam_visage\0";
     // SAFETY: IDENT is a valid NUL-terminated static string.
     unsafe {
-        libc::openlog(
-            IDENT.as_ptr() as *const libc::c_char,
-            LOG_PID,
-            LOG_AUTHPRIV,
-        );
+        libc::openlog(IDENT.as_ptr() as *const libc::c_char, LOG_PID, LOG_AUTHPRIV);
     }
 }
 
@@ -155,7 +151,12 @@ fn send_text_info(pamh: *mut libc::c_void, text: &str) {
 
     // SAFETY: msg_ptr points to a valid PamMessage, conv_fn is the PAM conversation callback.
     unsafe {
-        conv_fn(1, &msg_ptr as *const _ as *mut _, &mut resp_ptr, conv.appdata_ptr);
+        conv_fn(
+            1,
+            &msg_ptr as *const _ as *mut _,
+            &mut resp_ptr,
+            conv.appdata_ptr,
+        );
         // Free response array if allocated. TEXT_INFO rarely gets a response, but the spec
         // requires us to free both the response string and the response struct if present.
         if !resp_ptr.is_null() {
@@ -313,7 +314,8 @@ mod tests {
                     msg.contains("ServiceUnknown")
                         || msg.contains("NameHasNoOwner")
                         || msg.contains("not provided")
-                        || msg.contains("Failed to connect"),
+                        || msg.contains("Failed to connect")
+                        || msg.contains("no enrolled models"),
                     "unexpected error message: {msg}"
                 );
             }

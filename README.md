@@ -19,7 +19,7 @@ Linux-PAM — no kernel patches, no modified sudo.
 
 ## Status
 
-**v0.1.0 — feature-complete, end-to-end tested on Ubuntu 24.04.4 LTS.**
+**v0.2.0 — feature-complete, end-to-end tested on Ubuntu 24.04.4 LTS.**
 
 All 6 implementation steps complete. Verified: enroll, verify, PAM/sudo integration,
 systemd hardening, D-Bus access control, install/remove/purge lifecycle, suspend/resume.
@@ -33,7 +33,7 @@ systemd hardening, D-Bus access control, install/remove/purge lifecycle, suspend
 | 5 | IR emitter integration (`visage-hw`) | **Complete** |
 | 6 | Ubuntu packaging & system integration | **Complete** |
 
-Not yet suitable for production use — see [Known Limitations](docs/STATUS.md#known-limitations-at-v01).
+Not yet suitable for production use — see [Known Limitations](docs/STATUS.md#known-limitations-at-v02).
 
 ## Architecture
 
@@ -64,7 +64,7 @@ Not yet suitable for production use — see [Known Limitations](docs/STATUS.md#k
 
 ```bash
 # Install the package
-sudo apt install ./visage_0.1.0_amd64.deb
+sudo apt install ./visage_0.2.0_amd64.deb
 
 # Download face detection models (~182 MB)
 sudo visage setup

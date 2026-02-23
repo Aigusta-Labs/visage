@@ -1,6 +1,6 @@
-# Visage v0.1 Release Status
+# Visage v0.2 Release Status
 
-**Last updated:** 2026-02-22
+**Last updated:** 2026-02-23
 **Build state:** All 6 implementation steps complete. End-to-end tested on Ubuntu 24.04.4 LTS.
 
 ---
@@ -78,7 +78,7 @@ Items marked ✅ have been verified; items marked ⬜ require hardware not avail
 
 ---
 
-## Remaining Work (Before v0.1 Announcement)
+## Remaining Work (Before v0.2 Announcement)
 
 ### Blockers
 
@@ -89,9 +89,9 @@ Items marked ✅ have been verified; items marked ⬜ require hardware not avail
 
 3. ~~IR emitter suspend/resume hook~~ — **DONE** (systemd sleep hook restarts visaged on resume)
 
-### High Priority (not blockers for v0.1 but ship before public announcement)
+### High Priority (not blockers for v0.2 but ship before public announcement)
 
-4. ~~**Rate limiting**~~ — **DONE** (v0.1.1, commit c74cf33) — 5 failures/60s sliding window → 5-min lockout
+4. ~~**Rate limiting**~~ — **DONE** — 5 failures/60s sliding window → 5-min lockout
 
 5. ~~**Hardware compatibility docs and IPU6 detection**~~ — **DONE** (commit 7d0f9e1)
    - `visage discover` now shows kernel driver per device; warns on IPU6 with explanation
@@ -100,14 +100,14 @@ Items marked ✅ have been verified; items marked ⬜ require hardware not avail
    - ADR 008 documents decision rationale and trade-offs
 
 6. **NixOS packaging** — AEGIS overlay integration; listed as Tier 1 in distribution-strategy.md
-   - Path: `packaging/nix/` (not yet created)
-   - Blocked on: deciding whether to package via AEGIS overlay or nixpkgs PR
+   - Path: `packaging/nix/` (derivation present)
+   - Blocked on: flake wiring / nixpkgs submission decisions
 
 7. **GitHub release with pre-built `.deb`** — necessary for users without Rust toolchain
 
 8. **Debian changelog** — required for Launchpad PPA submission; not present
 
-### Post-v0.1 (v0.2 or v3)
+### Post-v0.2 (v0.3 or v3)
 
 - Launchpad PPA for `sudo apt install visage` (no source build required)
 - AUR package for Arch Linux
@@ -119,13 +119,13 @@ Items marked ✅ have been verified; items marked ⬜ require hardware not avail
 
 ---
 
-## Known Limitations at v0.1
+## Known Limitations at v0.2
 
 | Limitation | Impact | Mitigation | ADR |
 |------------|--------|------------|-----|
-| ~~No rate limiting~~ | ~~Unlimited face attempts~~ | **Resolved v0.1.1** — 5 failures/60 s → 5 min lockout; engine errors excluded | -- |
-| ~~D-Bus `user` param not validated~~ | ~~Compromised process can probe any user~~ | **Resolved v0.1.1** — caller UID verified via GetConnectionUnixUser; root exempt; session bus skips (dev mode) | ADR 007 |
-| ~~Face embeddings not encrypted~~ | ~~DB readable as root~~ | **Resolved v0.1.1** — AES-256-GCM at rest; per-installation key at `{db_dir}/.key` (mode 0600) | ADR 003 |
+| ~~No rate limiting~~ | ~~Unlimited face attempts~~ | **Resolved** — 5 failures/60 s → 5 min lockout; engine errors excluded | -- |
+| ~~D-Bus `user` param not validated~~ | ~~Compromised process can probe any user~~ | **Resolved** — caller UID verified via GetConnectionUnixUser; root exempt; session bus skips (dev mode) | ADR 007 |
+| ~~Face embeddings not encrypted~~ | ~~DB readable as root~~ | **Resolved** — AES-256-GCM at rest; per-installation key at `{db_dir}/.key` (mode 0600) | ADR 003 |
 | No active liveness | High-quality IR photo could pass | Emitter + multi-frame reduces risk; impractical in practice | ADR 007 |
 | `MemoryDenyWriteExecute=false` | Daemon can map W+X pages | Architectural: ONNX Runtime requires JIT; all other sandbox directives apply | ADR 007 |
 | Ubuntu only | No other distributions | .deb ships; NixOS, AUR, COPR pending | ADR 007 |
@@ -140,8 +140,8 @@ Items marked ✅ have been verified; items marked ⬜ require hardware not avail
 | `pam-visage` | 5 | PAM/syslog constant values, D-Bus error handling without daemon |
 | `visage-core` | 27 | Detection, alignment, recognition preprocessing, matching |
 | `visage-hw` | 9 | Frame processing, CLAHE, dark frame detection, pixel conversion |
-| `visaged` | 4 | SQLite store roundtrip, cross-user protection, embedding fidelity |
-| **Total** | **45** | **Unit tests — no integration tests; no hardware tests** |
+| `visaged` | 10 | Rate limiting and store tests (roundtrip, encryption, corruption hardening) |
+| **Total** | **51** | **Unit tests — no integration tests; no hardware tests** |
 
 Integration tests (camera + inference + daemon + PAM) are not present. They require physical
 hardware (IR camera) and are deferred to manual acceptance testing on Ubuntu 24.04.
