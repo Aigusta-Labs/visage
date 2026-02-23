@@ -5,8 +5,7 @@
 The Windows Hello equivalent for Linux. Visage authenticates `sudo`, login, and any
 PAM-gated service using your face — with sub-second response and no subprocess overhead.
 
-> Built in Rust by [Sovren Software](https://sovren.software) as the authentication layer
-> for [Augmentum OS](https://augmentum.computer). Ships standalone on any Linux system.
+> Built in Rust by [Sovren Software](https://sovren.software). Ships standalone on any Linux system.
 
 ---
 
