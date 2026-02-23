@@ -20,7 +20,7 @@ Linux-PAM — no kernel patches, no modified sudo.
 
 ## Status
 
-**v0.2 — feature-complete, end-to-end tested on Ubuntu 24.04.4 LTS.**
+**v0.1.0 — feature-complete, end-to-end tested on Ubuntu 24.04.4 LTS.**
 
 All 6 implementation steps complete. Verified: enroll, verify, PAM/sudo integration,
 systemd hardening, D-Bus access control, install/remove/purge lifecycle, suspend/resume.
@@ -218,22 +218,12 @@ Bugs fixed during testing: [DeviceAllow glob](docs/STATUS.md#bugs-found-during-t
 
 ## Documentation
 
-- [Operations Guide](docs/operations-guide.md) ← installation, configuration, troubleshooting
-- [Release Status & Remaining Work](docs/STATUS.md)
-- [Strategy — v2 to v3 Growth Map](docs/STRATEGY.md)
+- [Operations Guide](docs/operations-guide.md) ← start here: installation, configuration, troubleshooting
+- [Hardware Compatibility](docs/hardware-compatibility.md) ← supported cameras, tiers, quirks
+- [Release Status & Known Limitations](docs/STATUS.md)
 - [Architecture](docs/architecture.md)
 - [Threat Model](docs/threat-model.md)
-- [Architecture Review and Roadmap](docs/research/architecture-review-and-roadmap.md)
-- [v3 Vision — Forward-Looking Architecture](docs/research/v3-vision.md)
-- [Domain Audit](docs/research/domain-audit.md)
-- [ADR 001 — Camera Capture Pipeline](docs/decisions/001-camera-capture-pipeline.md)
-- [ADR 002 — ONNX Inference KB and Blocker Resolution](docs/decisions/002-onnx-inference-kb-and-blocker-resolution.md)
-- [ADR 003 — Daemon Integration Architecture](docs/decisions/003-daemon-integration.md)
-- [ADR 004 — ONNX Inference Pipeline Implementation](docs/decisions/004-inference-pipeline-implementation.md)
-- [ADR 005 — PAM Module and System Bus Migration](docs/decisions/005-pam-system-bus-migration.md)
-- [ADR 006 — IR Emitter Integration](docs/decisions/006-ir-emitter-integration.md)
-- [ADR 007 — Ubuntu Packaging](docs/decisions/007-ubuntu-packaging.md)
-- [ADR 008 — Hardware Compatibility Detection](docs/decisions/008-hardware-compatibility-detection.md)
+- [Architecture Decisions](docs/decisions/) ← 8 ADRs, one per implementation step
 
 ## Contributing
 
