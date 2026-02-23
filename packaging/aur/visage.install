@@ -1,0 +1,30 @@
+post_install() {
+    echo ""
+    echo ">>> Visage installed. Run the following to complete setup:"
+    echo ""
+    echo "    sudo visage setup          # download ONNX models (~182 MB)"
+    echo "    visage enroll              # enroll your face"
+    echo ""
+    echo ">>> PAM configuration (Arch Linux):"
+    echo "    Add the following line BEFORE 'auth required pam_unix.so' in"
+    echo "    /etc/pam.d/system-auth (or the specific service you want, e.g. sudo):"
+    echo ""
+    echo "        auth sufficient pam_visage.so"
+    echo ""
+    echo "    On failure or daemon unavailability, Visage passes through to password."
+    echo ""
+    systemctl daemon-reload || true
+    systemctl enable --now visaged.service 2>/dev/null || true
+    systemctl enable visage-resume.service 2>/dev/null || true
+}
+
+post_upgrade() {
+    systemctl daemon-reload || true
+    systemctl restart visaged.service 2>/dev/null || true
+}
+
+pre_remove() {
+    systemctl stop    visaged.service 2>/dev/null || true
+    systemctl disable visaged.service 2>/dev/null || true
+    systemctl disable visage-resume.service 2>/dev/null || true
+}

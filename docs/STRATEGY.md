@@ -1,7 +1,7 @@
 # Visage Strategy — Growth Map: v2 to v3
 
 **Status:** Locked — this document reflects committed direction, not a work in progress.
-**Last reviewed:** 2026-02-21
+**Last reviewed:** 2026-02-23
 
 ---
 
@@ -13,20 +13,20 @@ Visage is the Windows Hello equivalent for Linux — built right, from the groun
 
 ## Ecosystem Position
 
-Visage is the entry point to the Aegis Systems privacy stack.
+Visage is the entry point to the Sovren Software privacy stack.
 
-**Sequencing:** Visage launches publicly (v0.2, Summer 2026) 4–6 months before Aegis Linux
+**Sequencing:** Visage launches publicly (v0.2, Summer 2026) 4–6 months before Augmentum OS
 ships. Early adopters test hardware, contribute quirk entries, and validate the install
-lifecycle. By the time Aegis Linux ships, Visage has a live user base, a hardware
+lifecycle. By the time Augmentum OS ships, Visage has a live user base, a hardware
 compatibility matrix, and community-submitted packaging for major distros.
 
 **Flywheel:** Users install Visage today on Ubuntu/Arch/Fedora → they see
-*"the default face authentication layer for Aegis Linux"* → they anticipate the full
-hardened system. Visage builds credibility and awareness for Aegis Linux without any
+*"the default face authentication layer for Augmentum OS"* → they anticipate the full
+hardened system. Visage builds credibility and awareness for Augmentum OS without any
 feature coupling.
 
 **Boundary:** Visage is and remains **facial authentication only**. Features that belong
-to the Aegis Linux desktop layer — gesture tracking, motion-based input, behavioral
+to the Augmentum OS desktop layer — gesture tracking, motion-based input, behavioral
 biometrics — will not be merged into Visage. This boundary is documented in
 [CONTRIBUTING.md](../CONTRIBUTING.md) and enforced by maintainers.
 
