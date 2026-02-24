@@ -1,4 +1,4 @@
-# Visage v0.2 Release Status
+# Visage v0.3 Release Status
 
 **Last updated:** 2026-02-23
 **Build state:** All 6 implementation steps complete. End-to-end tested on Ubuntu 24.04.4 LTS.
@@ -78,7 +78,7 @@ Items marked ✅ have been verified; items marked ⬜ require hardware not avail
 
 ---
 
-## Remaining Work (Before v0.2 Announcement)
+## Remaining Work (Before v0.3 Announcement)
 
 ### Blockers
 
@@ -89,7 +89,7 @@ Items marked ✅ have been verified; items marked ⬜ require hardware not avail
 
 3. ~~IR emitter suspend/resume hook~~ — **DONE** (systemd sleep hook restarts visaged on resume)
 
-### High Priority (not blockers for v0.2 but ship before public announcement)
+### High Priority (not blockers for v0.3 but ship before public announcement)
 
 4. ~~**Rate limiting**~~ — **DONE** — 5 failures/60s sliding window → 5-min lockout
 
@@ -107,7 +107,7 @@ Items marked ✅ have been verified; items marked ⬜ require hardware not avail
 
 8. **Debian changelog** — required for Launchpad PPA submission; not present
 
-### Post-v0.2 (v0.3 or v3)
+### Post-v0.3 (v0.4 or v3)
 
 - Launchpad PPA for `sudo apt install visage` (no source build required)
 - AUR package for Arch Linux
@@ -119,7 +119,7 @@ Items marked ✅ have been verified; items marked ⬜ require hardware not avail
 
 ---
 
-## Known Limitations at v0.2
+## Known Limitations at v0.3
 
 | Limitation | Impact | Mitigation | ADR |
 |------------|--------|------------|-----|

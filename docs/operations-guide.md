@@ -23,7 +23,7 @@ Supported cameras: see [Hardware Compatibility](#hardware-compatibility).
 
 ```bash
 # 1. Install the package
-sudo apt install ./visage_0.2.0_amd64.deb
+sudo apt install ./visage_0.3.0_amd64.deb
 
 # 2. Download ONNX models (~182 MB, requires internet)
 sudo visage setup
@@ -56,7 +56,7 @@ sudo apt install ./target/debian/visage_*.deb
 
 ## First-Time Setup
 
-### 1. Download models
+### 1. Download models (one-time):
 
 `visage setup` downloads two ONNX models to `/var/lib/visage/models/`:
 
@@ -75,6 +75,10 @@ Model directory: /var/lib/visage/models
 
 Setup complete: 2 model(s) downloaded, 0 already present.
 ```
+
+The daemon enforces strict model integrity: if required ONNX model files are missing or the
+SHA-256 checksum does not match the pinned values for this release, `visaged` will refuse to
+start. Re-run `sudo visage setup` to download verified models.
 
 ### 2. Verify the daemon is running
 

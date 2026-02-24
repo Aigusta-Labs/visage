@@ -1,38 +1,14 @@
 //! `visage setup` — downloads ONNX models required for face detection and recognition.
 
 use anyhow::{bail, Context, Result};
-use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
+use visage_models::{verify_file_sha256, ModelIntegrityError, MODELS};
+
 // libc is a workspace dep (already used by pam-visage)
 extern crate libc;
-
-/// Model file descriptor: URL, expected filename, SHA-256 checksum, human-readable size.
-struct ModelFile {
-    name: &'static str,
-    url: &'static str,
-    sha256: &'static str,
-    size_display: &'static str,
-}
-
-// Checksums verified from HuggingFace Git LFS pointer files (oid sha256: field).
-// Source: https://huggingface.co/public-data/insightface/raw/main/models/buffalo_l/
-const MODELS: &[ModelFile] = &[
-    ModelFile {
-        name: "det_10g.onnx",
-        url: "https://huggingface.co/public-data/insightface/resolve/main/models/buffalo_l/det_10g.onnx",
-        sha256: "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91",
-        size_display: "16 MB",
-    },
-    ModelFile {
-        name: "w600k_r50.onnx",
-        url: "https://huggingface.co/public-data/insightface/resolve/main/models/buffalo_l/w600k_r50.onnx",
-        sha256: "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43",
-        size_display: "166 MB",
-    },
-];
 
 /// Determine the model directory.
 ///
@@ -55,24 +31,8 @@ fn is_root() -> bool {
     unsafe { libc::geteuid() == 0 }
 }
 
-/// Compute SHA-256 hex digest of a file.
-fn sha256_file(path: &Path) -> Result<String> {
-    let mut file =
-        fs::File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
-    let mut hasher = Sha256::new();
-    let mut buf = [0u8; 8192];
-    loop {
-        let n = file.read(&mut buf)?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buf[..n]);
-    }
-    Ok(format!("{:x}", hasher.finalize()))
-}
-
 /// Download a single model file with progress output.
-fn download_model(model: &ModelFile, dest: &Path) -> Result<()> {
+fn download_model(model: &visage_models::ModelFile, dest: &Path) -> Result<()> {
     let tmp_path = dest.with_extension("onnx.part");
 
     println!("  downloading {} ({})...", model.name, model.size_display);
@@ -120,15 +80,9 @@ fn download_model(model: &ModelFile, dest: &Path) -> Result<()> {
     // Verify checksum
     print!("  verifying checksum... ");
     io::stdout().flush().ok();
-    let digest = sha256_file(&tmp_path)?;
-    if digest != model.sha256 {
+    if let Err(err) = verify_file_sha256(model.name, &tmp_path, model.sha256) {
         fs::remove_file(&tmp_path).ok();
-        bail!(
-            "checksum mismatch for {}:\n  expected: {}\n  got:      {}",
-            model.name,
-            model.sha256,
-            digest
-        );
+        bail!("{err}");
     }
     println!("ok");
 
@@ -163,21 +117,22 @@ pub fn run(model_dir: Option<String>) -> Result<()> {
         let dest = dir.join(model.name);
         if dest.exists() {
             // Verify existing file
-            match sha256_file(&dest) {
-                Ok(digest) if digest == model.sha256 => {
+            match verify_file_sha256(model.name, &dest, model.sha256) {
+                Ok(()) => {
                     println!("  {} already present (checksum ok)", model.name);
                     skipped += 1;
                     continue;
                 }
-                Ok(_) => {
+                Err(ModelIntegrityError::ChecksumMismatch { .. }) => {
                     println!(
                         "  {} exists but checksum differs — re-downloading",
                         model.name
                     );
                 }
-                Err(_) => {
+                Err(ModelIntegrityError::Open { .. } | ModelIntegrityError::Read { .. }) => {
                     println!("  {} exists but unreadable — re-downloading", model.name);
                 }
+                Err(ModelIntegrityError::MissingModel { .. }) => {}
             }
         }
 

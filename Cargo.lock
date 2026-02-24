@@ -1684,7 +1684,7 @@ dependencies = [
 
 [[package]]
 name = "pam-visage"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "libc",
  "zbus",
@@ -2804,25 +2804,25 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "visage-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
  "image",
  "libc",
  "serde_json",
- "sha2",
  "tokio",
  "tracing",
  "tracing-subscriber",
  "ureq",
  "visage-hw",
+ "visage-models",
  "zbus",
 ]
 
 [[package]]
 name = "visage-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "image",
  "ndarray",
@@ -2835,7 +2835,7 @@ dependencies = [
 
 [[package]]
 name = "visage-hw"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "libc",
  "serde",
@@ -2847,8 +2847,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "visage-models"
+version = "0.3.0"
+dependencies = [
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
 name = "visaged"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -2866,6 +2874,7 @@ dependencies = [
  "uuid",
  "visage-core",
  "visage-hw",
+ "visage-models",
  "zbus",
 ]
 

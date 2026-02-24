@@ -154,7 +154,7 @@ ideas are bad. If you want gestures or voice on Linux, watch the [Augmentum OS](
 
 ## Roadmap
 
-**v0.2 targets** (before public community launch, Summer 2026):
+**Public launch targets** (before public community launch, Summer 2026):
 
 - [x] AUR PKGBUILD (`packaging/aur/`)
 - [x] NixOS derivation (`packaging/nix/`) — flake wiring pending
@@ -163,7 +163,7 @@ ideas are bad. If you want gestures or voice on Linux, watch the [Augmentum OS](
 - [ ] Enroll quality scoring (reject blurry / dark / partial frames at capture time)
 - [ ] `visage discover --json` for structured output (gating requirement for v3 classifier)
 
-**v0.3 targets:**
+**v0.4 targets:**
 
 - [ ] Intel IPU6 camera support via libcamera
 - [ ] GPU-accelerated inference (OpenCL/Vulkan)

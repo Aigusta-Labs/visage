@@ -62,8 +62,8 @@ stdout/stderr automatically.
 **Decision:** Default policy allows only `Verify` and `Status`. `Enroll`, `RemoveModel`, and
 `ListModels` are implicitly restricted to root (no `<allow>` in default context).
 
-**Rationale:** Sufficient for v2. In-method UID checks via `GetConnectionCredentials` are
-deferred to v3. v0.2 performs in-method caller UID validation via D-Bus UNIX UID lookup
+**Rationale:** Sufficient for v0.3. In-method UID checks via `GetConnectionCredentials` are
+deferred to v3. v0.3 performs in-method caller UID validation via D-Bus UNIX UID lookup
 (`GetConnectionUnixUser`) and an NSS-backed username→UID resolution.
 
 ### 7. PAM conversation: success feedback only

@@ -32,7 +32,7 @@ Linux deserves a biometric authentication layer that is **reliable, secure, and 
 
 ---
 
-## Where We Are: v0.2.0
+## Where We Are: v0.3.0
 
 **Shipped 2026-02-23. All 6 implementation steps complete. End-to-end tested on Ubuntu 24.04.4 LTS.**
 
@@ -70,7 +70,7 @@ and voice belong to the Augmentum OS layer. This is enforced in [CONTRIBUTING.md
 
 ## Roadmap
 
-### v0.2 — Public Launch (Summer 2026)
+### Public Launch (Summer 2026)
 
 Coordinated announcement across r/linux, r/rust, r/privacy, Hacker News, and Phoronix.
 The announcement leads with the architectural story: persistent daemon, no subprocess overhead,
@@ -86,7 +86,12 @@ encrypted embeddings at rest. The benchmark provides the concrete numbers.
 | Enrollment quality scoring | ⬜ Reject blurry / dark / partial frames at capture |
 | `visage discover --json` | ⬜ Structured output — required for v3 hardware classifier |
 
-### v0.3 — Hardware Breadth
+### v0.3 — Security-First Hardening
+
+- Strict ONNX model integrity verification (pinned SHA-256; fail-closed at daemon startup)
+- Shared model manifest crate used by both CLI and daemon
+
+### v0.4 — Hardware Breadth
 
 - Intel IPU6 camera support via libcamera
 - GPU-accelerated inference (OpenCL / Vulkan)

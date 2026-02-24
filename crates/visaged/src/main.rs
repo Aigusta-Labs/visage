@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use tracing_subscriber::EnvFilter;
 
 mod config;
@@ -34,6 +34,15 @@ async fn main() -> Result<()> {
         session_bus = config.session_bus,
         "configuration loaded"
     );
+
+    visage_models::verify_models_dir(&config.model_dir)
+        .map_err(anyhow::Error::from)
+        .with_context(|| {
+            format!(
+                "model integrity verification failed for {}; run `sudo visage setup` to download verified ONNX models",
+                config.model_dir.display()
+            )
+        })?;
 
     // 2. Spawn engine (opens camera, loads models — fail-fast)
     let engine = spawn_engine(

@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.3.0 — 2026-02-23
+
+### What's changed
+
+- **Security-first model integrity** — ONNX model files are now verified via pinned SHA-256.
+  `visage setup` verifies checksums on download and `visaged` verifies the model directory at
+  startup (fails closed on missing/mismatched models).
+- **Shared model manifest** — added `visage-models` crate containing the model list and
+  verification helpers used by both the CLI and daemon.
+
 ## v0.2.0 — 2026-02-23
 
 ### What's changed

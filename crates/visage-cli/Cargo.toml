@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 visage-hw = { path = "../visage-hw" }
+visage-models = { path = "../visage-models" }
 image = { workspace = true }
 zbus = { workspace = true }
 clap = { workspace = true }
@@ -21,4 +22,3 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 libc = { workspace = true }
 ureq = "3"
-sha2 = "0.10"

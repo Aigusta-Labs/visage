@@ -7,7 +7,7 @@ Visage provides **convenience authentication** — it reduces friction for commo
 
 ## Implementation Status
 
-The threat model is organized by implementation tier. Items marked **(v0.2 — implemented)**
+The threat model is organized by implementation tier. Items marked **(v0.3 — implemented)**
 are active in the current codebase. Items marked **(roadmap)** are not yet present.
 
 ## Threat Tiers
@@ -16,13 +16,14 @@ are active in the current codebase. Items marked **(roadmap)** are not yet prese
 
 | Threat | Mitigation | Status |
 |--------|------------|--------|
-| Brute force (repeated attempts) | Rate limiting + lockout after N failures | ✅ v0.2 — implemented |
-| Stolen photo (printed) | Multi-frame confirmation + IR emitter support (when available) | ✅ v0.2 — IR recommended; RGB webcams are supported |
+| Brute force (repeated attempts) | Rate limiting + lockout after N failures | ✅ v0.3 — implemented |
+| Stolen photo (printed) | Multi-frame confirmation + IR emitter support (when available) | ✅ v0.3 — IR recommended; RGB webcams are supported |
+| Model tampering / substitution | Strict SHA-256 verification on download + daemon startup | ✅ v0.3 — implemented |
 | Replay attack (recorded video) | IR strobe pattern detection (odd/even frame analysis) | ⬜ Roadmap — IR emitter is on but no strobe challenge |
-| Unauthorized enrollment | Root-only enrollment via D-Bus policy | ✅ v0.2 — D-Bus policy restricts Enroll to root |
-| Timing side channel | Constant-time embedding comparison | ✅ v0.2 — `CosineMatcher` always processes all gallery entries |
-| Login hang (daemon crash) | 3-second PAM call timeout | ✅ v0.2 (Step 6) — `method_timeout(3s)` via zbus connection builder |
-| Auth failure leaks user info | syslog at LOG_AUTHPRIV | ✅ v0.2 (Step 6) — goes to `/var/log/auth.log`, not terminal |
+| Unauthorized enrollment | Root-only enrollment via D-Bus policy | ✅ v0.3 — D-Bus policy restricts Enroll to root |
+| Timing side channel | Constant-time embedding comparison | ✅ v0.3 — `CosineMatcher` always processes all gallery entries |
+| Login hang (daemon crash) | 3-second PAM call timeout | ✅ v0.3 (Step 6) — `method_timeout(3s)` via zbus connection builder |
+| Auth failure leaks user info | syslog at LOG_AUTHPRIV | ✅ v0.3 (Step 6) — goes to `/var/log/auth.log`, not terminal |
 
 ### Tier 1 — Liveness
 
@@ -106,7 +107,7 @@ pam_visage: pam_get_user failed (ret=4)
 **Not yet logged:** match confidence score, camera device used, IR emitter status. These
 require structured journal fields (sd_journal_send) rather than plain syslog — deferred to v3.
 
-## Known Security Gaps (v0.2)
+## Known Security Gaps (v0.3)
 
 1. **No active liveness detection.** A high-quality photograph in the IR band could
    potentially pass verification. The IR emitter increases the difficulty but does not

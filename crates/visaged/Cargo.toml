@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 visage-core = { path = "../visage-core" }
 visage-hw = { path = "../visage-hw" }
+visage-models = { path = "../visage-models" }
 tokio = { workspace = true }
 zbus = { workspace = true }
 tracing = { workspace = true }

@@ -6,10 +6,11 @@ members = [
     "crates/visage-cli",
     "crates/visage-core",
     "crates/visage-hw",
+    "crates/visage-models",
 ]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/sovren-software/visage"
@@ -56,6 +57,7 @@ ndarray = "0.17"
 # Cryptography (embedding encryption)
 aes-gcm = "0.10"
 rand = "0.8"
+sha2 = "0.10"
 
 # FFI / system
 libc = "0.2"
