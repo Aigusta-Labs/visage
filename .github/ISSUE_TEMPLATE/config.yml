@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/sovren-software/visage/security/advisories/new
+    about: Report security issues privately via GitHub's vulnerability reporting — do NOT open a public issue.
+  - name: Contributing guide
+    url: https://github.com/sovren-software/visage/blob/main/CONTRIBUTING.md
+    about: Read before submitting — includes scope, PR guidelines, and the Adopt-a-Laptop program.

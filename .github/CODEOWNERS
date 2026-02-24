@@ -1,0 +1,19 @@
+# Visage code ownership
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default: Sovren Software reviews everything
+* @sovren-software
+
+# Security-critical crates — require explicit maintainer review
+crates/visaged/          @sovren-software
+crates/pam-visage/       @sovren-software
+crates/visage-core/      @sovren-software
+crates/visage-models/    @sovren-software
+
+# PAM and D-Bus system configuration
+packaging/debian/        @sovren-software
+systemd/                 @sovren-software
+dbus/                    @sovren-software
+
+# CI and release infrastructure
+.github/                 @sovren-software

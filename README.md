@@ -225,13 +225,24 @@ Bugs fixed during testing: [DeviceAllow glob](docs/STATUS.md#bugs-found-during-t
 - [Threat Model](docs/threat-model.md)
 - [Architecture Decisions](docs/decisions/) ← 9 ADRs covering all implementation and security decisions
 
+## Security
+
+Visage is a PAM authentication module — security vulnerabilities have direct impact.
+**Report security issues privately** via [GitHub Private Vulnerability Reporting](https://github.com/sovren-software/visage/security/advisories/new).
+Do not open public issues for security bugs.
+
+Full policy, scope, and response timeline: [SECURITY.md](SECURITY.md).
+
 ## Contributing
 
 Visage is feature-complete for facial authentication. Community contributions are
 focused on **hardware validation** (IR camera quirks) and **distribution packaging**.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide, including the Adopt-a-Laptop
-program, the out-of-scope feature list, and packaging status by distro.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide, including:
+- The **Adopt-a-Laptop** program — test on your hardware, submit a report
+- **PR guidelines** — merge strategy, review timeline, DCO sign-off
+- **Out-of-scope features** — what we will and will not merge
+- **Packaging status** by distribution
 
 ## License
 

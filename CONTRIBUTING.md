@@ -176,17 +176,71 @@ ideas are bad. If you want gestures or voice on Linux, watch the [Augmentum OS](
 
 ## PR guidelines
 
-- **Hardware quirks:** Open immediately — we merge these fast.
-- **Distro packaging:** Open an issue first to coordinate; we want to review the
-  packaging approach before you invest significant time.
-- **Bug fixes:** PRs welcome without prior discussion for anything in the issue tracker.
-- **New features:** Open an issue first. If it is in the out-of-scope list above,
-  it will be declined — save yourself the time.
-- **Core security changes** (`visaged`, `pam-visage`, `visage-core`): Discuss in an
-  issue before opening a PR. The auth path deserves extra review.
+All PRs are filed against `main`. Use the [PR template](.github/pull_request_template.md)
+— it is loaded automatically when you open a PR on GitHub.
 
-**Code style:** `cargo fmt` + `cargo clippy --workspace -- -D warnings` must both pass.
-Tests: `cargo test --workspace`. No new warnings.
+### When to open a PR vs. an issue first
+
+| Contribution type | Process |
+|---|---|
+| **Hardware quirk** (`contrib/hw/*.toml`) | Open a PR directly — these are fast-tracked |
+| **Bug fix** for a tracked issue | PR welcome without prior discussion |
+| **Distribution packaging** | Open an issue first to coordinate approach |
+| **New feature** | Open an issue first — check the [out-of-scope list](#what-we-will-not-merge) |
+| **Core security change** (`visaged`, `pam-visage`, `visage-core`, `visage-models`) | Open an issue first — the auth path requires extra review |
+| **Security vulnerability** | **Do NOT open a public issue** — see [SECURITY.md](SECURITY.md) |
+
+### Code quality gates
+
+Every PR must pass before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace -- -D warnings
+cargo test --workspace
+```
+
+CI runs these automatically on every PR. No new warnings.
+
+### Merge strategy
+
+- **Hardware quirks and docs:** Merge commit (preserves contributor attribution)
+- **Bug fixes and features:** Squash and merge (clean history on `main`)
+- **Multi-crate refactors:** Maintainer discretion
+
+### Review timeline
+
+| PR type | Target review time |
+|---------|-------------------|
+| Hardware quirk | 1–2 business days |
+| Bug fix | 3–5 business days |
+| Packaging / feature | 1–2 weeks |
+
+We are a small team. If your PR has not received a review within the target window,
+leave a comment — it may have been missed.
+
+### Developer Certificate of Origin (DCO)
+
+By submitting a PR, you certify that your contribution is your own work (or you
+have the right to submit it) under the project's MIT license. We use the
+[Developer Certificate of Origin](https://developercertificate.org/) (DCO).
+
+Sign your commits with `git commit -s` to add:
+
+```
+Signed-off-by: Your Name <your.email@example.com>
+```
+
+All commits in a PR must carry this sign-off line. CI does not currently enforce
+this automatically, but maintainers will request it during review if missing.
+
+---
+
+## Reporting security issues
+
+Visage is a PAM authentication module — security vulnerabilities have real impact.
+**Do not open a public issue for security bugs.** Use GitHub's private vulnerability
+reporting instead. Full details: [SECURITY.md](SECURITY.md).
 
 ---
 
