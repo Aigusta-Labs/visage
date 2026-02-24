@@ -1,7 +1,7 @@
 # Visage Strategy
 
 **Status:** Living — reflects committed direction. Updated as versions ship.
-**Last reviewed:** 2026-02-23
+**Last reviewed:** 2026-02-24
 
 ---
 
@@ -80,6 +80,7 @@ encrypted embeddings at rest. The benchmark provides the concrete numbers.
 |------|--------|
 | AUR PKGBUILD | ✅ `packaging/aur/` |
 | NixOS derivation | ✅ `packaging/nix/` — flake wiring pending |
+| OSS contribution governance | ✅ Branch protection, SECURITY.md, templates, CODEOWNERS, DCO (ADR 010) |
 | COPR RPM spec | ⬜ `packaging/rpm/` |
 | Howdy vs Visage benchmark | ⬜ Matched hardware, published methodology |
 | Active liveness detection | ⬜ Blink challenge — proof of concept |
@@ -180,4 +181,5 @@ The PAM module shipped in v0.1.0 will work with v3 without modification. It call
 | [research/v3-vision.md](research/v3-vision.md) | Full v3 architecture — 5 dimensions with concrete implementation paths |
 | [architecture.md](architecture.md) | Component overview, data flow, API surface |
 | [threat-model.md](threat-model.md) | Threat model, trust boundaries, attack mitigations |
-| [marketing/distribution-strategy.md](marketing/distribution-strategy.md) | Distribution priority — why packages precede the public announcement |
+| [SECURITY.md](../SECURITY.md) | Vulnerability reporting policy, component risk table, response timeline |
+| [CONTRIBUTING.md](../CONTRIBUTING.md) | Contribution guide — scope, PR process, DCO, merge strategy |

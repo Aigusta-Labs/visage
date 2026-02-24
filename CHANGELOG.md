@@ -9,6 +9,10 @@
   startup (fails closed on missing/mismatched models).
 - **Shared model manifest** — added `visage-models` crate containing the model list and
   verification helpers used by both the CLI and daemon.
+- **OSS contribution governance** — added `SECURITY.md` (private vulnerability reporting
+  via GitHub Security Advisories), branch protection on `main` (required PR + CI + review),
+  `CODEOWNERS`, issue/PR templates, DCO sign-off policy, Dependabot for dependency updates,
+  and documented merge strategy with review timeline commitments. See ADR 010.
 
 ## v0.2.0 — 2026-02-23
 
