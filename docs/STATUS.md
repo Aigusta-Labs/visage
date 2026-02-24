@@ -1,6 +1,6 @@
 # Visage v0.3 Release Status
 
-**Last updated:** 2026-02-23
+**Last updated:** 2026-02-24
 **Build state:** v0.3.0 shipped. All 6 implementation steps complete + model integrity enforcement. End-to-end tested on Ubuntu 24.04.4 LTS.
 
 ---
@@ -95,6 +95,17 @@ Items marked ✅ have been verified; items marked ⬜ require hardware not avail
    - `visaged` fails closed at startup if models are missing or checksums mismatch
    - `visage setup` refactored to use shared manifest (no duplicated model list)
    - ADR 009 documents rationale, trade-offs, and known limitations
+
+5. ~~OSS contribution governance~~ — **DONE** (2026-02-24)
+   - `SECURITY.md`: private vulnerability reporting via GitHub Security Advisories
+   - Branch protection on `main`: required PR, 1 approval, `test` status check, no force push
+   - `CODEOWNERS`: `@sovren-software` owns all paths; explicit entries for security crates
+   - Issue templates: bug report, hardware report, feature request + config.yml
+   - PR template: type, description, testing, quality gate checklist
+   - `CONTRIBUTING.md`: DCO sign-off policy, merge strategy, review timeline
+   - Dependabot: weekly Cargo + GitHub Actions dependency PRs
+   - LICENSE copyright corrected to Sovren Software
+   - ADR 010 documents rationale, trade-offs, and known limitations
 
 ### High Priority (not blockers but ship before public announcement)
 
