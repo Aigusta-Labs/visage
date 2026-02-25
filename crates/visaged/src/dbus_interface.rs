@@ -4,7 +4,7 @@ use tokio::sync::Mutex;
 use zbus::interface;
 
 use crate::config::Config;
-use crate::engine::EngineHandle;
+use crate::engine::{EngineError, EngineHandle};
 use crate::rate_limiter::RateLimiter;
 use crate::store::FaceModelStore;
 
@@ -141,7 +141,7 @@ impl VisageService {
         }
 
         // --- Fetch gallery and config (release lock before engine call) ---
-        let (engine, gallery, threshold, frames_count, timeout_secs) = {
+        let (engine, gallery, threshold, frames_count, timeout_secs, liveness_enabled, liveness_min_displacement) = {
             let state = self.state.lock().await;
             let gallery = state.store.get_gallery_for_user(user).await.map_err(|e| {
                 tracing::error!(error = %e, "verify: gallery fetch failed");
@@ -153,6 +153,8 @@ impl VisageService {
                 state.config.similarity_threshold,
                 state.config.frames_per_verify,
                 state.config.verify_timeout_secs,
+                state.config.liveness_enabled,
+                state.config.liveness_min_displacement,
             )
         };
 
@@ -164,16 +166,47 @@ impl VisageService {
         }
 
         // --- Run engine with timeout (no lock held) ---
-        // Engine errors (camera failure, timeout) are returned here as Err and do NOT
-        // count as rate-limit failures — only a deliberate face-not-matched result does.
+        // Runtime errors (camera failure, timeout) are returned as Err and do NOT count
+        // as rate-limit failures. Liveness failures are treated as deliberate auth failures
+        // and converted to non-match so they are rate-limited like other failed attempts.
         let timeout = std::time::Duration::from_secs(timeout_secs);
-        let result = engine
-            .verify(gallery, threshold, frames_count, timeout)
+        let result = match engine
+            .verify(
+                gallery,
+                threshold,
+                frames_count,
+                timeout,
+                liveness_enabled,
+                liveness_min_displacement,
+            )
             .await
-            .map_err(|e| {
+        {
+            Ok(result) => result,
+            Err(EngineError::LivenessCheckFailed {
+                displacement,
+                threshold,
+            }) => {
+                tracing::warn!(
+                    user,
+                    displacement,
+                    threshold,
+                    "verify: liveness check failed — treating as non-match"
+                );
+                crate::engine::VerifyResult {
+                    result: visage_core::MatchResult {
+                        matched: false,
+                        similarity: 0.0,
+                        model_id: None,
+                        model_label: None,
+                    },
+                    best_quality: 0.0,
+                }
+            }
+            Err(e) => {
                 tracing::error!(error = %e, "verify failed");
-                zbus::fdo::Error::Failed(e.to_string())
-            })?;
+                return Err(zbus::fdo::Error::Failed(e.to_string()));
+            }
+        };
 
         // --- Record rate-limit outcome ---
         {
@@ -213,6 +246,8 @@ impl VisageService {
             "frames_per_verify": state.config.frames_per_verify,
             "frames_per_enroll": state.config.frames_per_enroll,
             "emitter_enabled": state.config.emitter_enabled,
+            "liveness_enabled": state.config.liveness_enabled,
+            "liveness_min_displacement": state.config.liveness_min_displacement,
             "session_bus": state.config.session_bus,
         })
         .to_string())

@@ -47,11 +47,12 @@
 3. Calls `Verify(username)` with a timeout
 4. Daemon activates IR emitter (if needed)
 5. Captures N frames, skipping dark frames
-6. SCRFD detects face bounding boxes
+6. SCRFD detects face bounding boxes + 5-point landmarks per frame
 7. ArcFace extracts embedding from best detection
-8. Compares embedding against enrolled models (cosine similarity)
-9. Returns match/no-match to PAM module
-10. PAM module returns PAM_SUCCESS or PAM_IGNORE (safe fallback)
+8. **Passive liveness check:** verifies eye landmarks shifted between frames (rejects static photos)
+9. Compares embedding against enrolled models (cosine similarity)
+10. Returns match/no-match to PAM module
+11. PAM module returns PAM_SUCCESS or PAM_IGNORE (safe fallback)
 
 ## Camera Pipeline (visage-hw) — Implemented
 
@@ -396,6 +397,8 @@ All settings are overridable via `VISAGE_*` environment variables. Defaults:
 | Frames per verify | `3` | `VISAGE_FRAMES_PER_VERIFY` |
 | Frames per enroll | `5` | `VISAGE_FRAMES_PER_ENROLL` |
 | IR emitter enabled | `true` | `VISAGE_EMITTER_ENABLED` (set to `0` to disable) |
+| Passive liveness enabled | `true` | `VISAGE_LIVENESS_ENABLED` (set to `0` to disable) |
+| Liveness min displacement | `0.8` | `VISAGE_LIVENESS_MIN_DISPLACEMENT` |
 
 ### Startup Sequence (Fail-Fast)
 

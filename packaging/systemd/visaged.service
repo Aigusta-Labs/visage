@@ -11,6 +11,9 @@ RestartSec=5
 Environment=VISAGE_MODEL_DIR=/var/lib/visage/models
 Environment=VISAGE_DB_PATH=/var/lib/visage/faces.db
 Environment=RUST_LOG=visaged=info
+# Optional liveness tuning:
+# Environment=VISAGE_LIVENESS_ENABLED=1
+# Environment=VISAGE_LIVENESS_MIN_DISPLACEMENT=0.8
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true

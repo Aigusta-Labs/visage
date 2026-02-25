@@ -69,7 +69,28 @@ in
       example = 0.45;
       description = ''
         Cosine similarity threshold for face matching. Higher values are
-        stricter. When null, the daemon uses its compiled default (0.45).
+        stricter. When null, the daemon uses its compiled default (0.40).
+      '';
+    };
+
+    liveness.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Whether to enable passive liveness detection (landmark stability).
+        When enabled, static photographs are rejected by checking that eye
+        landmarks shift between captured frames.
+      '';
+    };
+
+    liveness.minDisplacement = lib.mkOption {
+      type = lib.types.nullOr lib.types.float;
+      default = null;
+      example = 0.8;
+      description = ''
+        Minimum mean eye landmark displacement (in pixels) for the liveness
+        check. Lower values are more permissive. When null, the daemon uses
+        its compiled default (0.8).
       '';
     };
 
@@ -110,9 +131,13 @@ in
         VISAGE_DB_PATH = toString cfg.dbPath;
         RUST_LOG = cfg.logLevel;
       } // lib.optionalAttrs (cfg.camera != null) {
-        VISAGE_CAMERA = cfg.camera;
+        VISAGE_CAMERA_DEVICE = cfg.camera;
       } // lib.optionalAttrs (cfg.similarityThreshold != null) {
         VISAGE_SIMILARITY_THRESHOLD = toString cfg.similarityThreshold;
+      } // lib.optionalAttrs (!cfg.liveness.enable) {
+        VISAGE_LIVENESS_ENABLED = "0";
+      } // lib.optionalAttrs (cfg.liveness.minDisplacement != null) {
+        VISAGE_LIVENESS_MIN_DISPLACEMENT = toString cfg.liveness.minDisplacement;
       };
 
       serviceConfig = {

@@ -20,6 +20,12 @@ pub struct Config {
     pub frames_per_enroll: usize,
     /// Whether to activate the IR emitter around each capture sequence.
     pub emitter_enabled: bool,
+    /// Whether passive liveness detection (landmark stability) is enabled.
+    pub liveness_enabled: bool,
+    /// Minimum mean eye landmark displacement (pixels) for liveness check.
+    /// Lower values are more permissive; higher values reject more aggressively.
+    /// Only used when `liveness_enabled` is true.
+    pub liveness_min_displacement: f32,
     /// Whether the daemon is running on the session bus (development mode).
     /// UID validation is skipped on the session bus — all callers share the same user.
     pub session_bus: bool,
@@ -57,6 +63,10 @@ impl Config {
             emitter_enabled: std::env::var("VISAGE_EMITTER_ENABLED")
                 .map(|v| v != "0")
                 .unwrap_or(true),
+            liveness_enabled: std::env::var("VISAGE_LIVENESS_ENABLED")
+                .map(|v| v != "0")
+                .unwrap_or(true),
+            liveness_min_displacement: env_f32("VISAGE_LIVENESS_MIN_DISPLACEMENT", 0.8),
             session_bus: std::env::var("VISAGE_SESSION_BUS").is_ok(),
         }
     }

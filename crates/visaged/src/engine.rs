@@ -1,6 +1,6 @@
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
-use visage_core::{CosineMatcher, Embedding, FaceModel, MatchResult, Matcher};
+use visage_core::{check_landmark_stability, CosineMatcher, Embedding, FaceModel, MatchResult, Matcher};
 use visage_hw::{Camera, IrEmitter};
 
 #[derive(Error, Debug)]
@@ -13,6 +13,11 @@ pub enum EngineError {
     Recognizer(#[from] visage_core::recognizer::RecognizerError),
     #[error("no face detected in any captured frame")]
     NoFaceDetected,
+    #[error("liveness check failed: landmark displacement {displacement:.3} px < threshold {threshold:.3} px")]
+    LivenessCheckFailed {
+        displacement: f32,
+        threshold: f32,
+    },
     #[error("verification timed out")]
     VerifyTimeout,
     #[error("engine thread exited")]
@@ -44,6 +49,8 @@ enum EngineRequest {
         threshold: f32,
         frames_count: usize,
         timeout: std::time::Duration,
+        liveness_enabled: bool,
+        liveness_min_displacement: f32,
         reply: oneshot::Sender<Result<VerifyResult, EngineError>>,
     },
 }
@@ -75,6 +82,8 @@ impl EngineHandle {
         threshold: f32,
         frames_count: usize,
         timeout: std::time::Duration,
+        liveness_enabled: bool,
+        liveness_min_displacement: f32,
     ) -> Result<VerifyResult, EngineError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.tx
@@ -83,6 +92,8 @@ impl EngineHandle {
                 threshold,
                 frames_count,
                 timeout,
+                liveness_enabled,
+                liveness_min_displacement,
                 reply: reply_tx,
             })
             .await
@@ -173,6 +184,8 @@ pub fn spawn_engine(
                         threshold,
                         frames_count,
                         timeout,
+                        liveness_enabled,
+                        liveness_min_displacement,
                         reply,
                     } => {
                         let deadline = std::time::Instant::now() + timeout;
@@ -185,6 +198,8 @@ pub fn spawn_engine(
                             threshold,
                             frames_count,
                             deadline,
+                            liveness_enabled,
+                            liveness_min_displacement,
                         );
                         let _ = reply.send(result);
                     }
@@ -320,6 +335,10 @@ fn run_enroll(
 
 /// Capture frames, detect faces, extract embeddings, compare against gallery.
 /// Uses the best match across all captured frames.
+///
+/// When `liveness_enabled` is true, collects eye landmarks across all frames
+/// and runs a passive stability check before accepting a match. Static images
+/// (photographs) produce near-identical landmarks and are rejected.
 #[allow(clippy::too_many_arguments)]
 fn run_verify(
     camera: &Camera,
@@ -330,6 +349,8 @@ fn run_verify(
     threshold: f32,
     frames_count: usize,
     deadline: std::time::Instant,
+    liveness_enabled: bool,
+    liveness_min_displacement: f32,
 ) -> Result<VerifyResult, EngineError> {
     if std::time::Instant::now() > deadline {
         return Err(EngineError::VerifyTimeout);
@@ -358,6 +379,7 @@ fn run_verify(
     let mut best_result: Option<MatchResult> = None;
     let mut best_quality = 0.0f32;
     let mut any_face_detected = false;
+    let mut landmark_sequence: Vec<[(f32, f32); 5]> = Vec::new();
 
     for frame in &frames {
         let faces = detector.detect(&frame.data, frame.width, frame.height)?;
@@ -365,6 +387,11 @@ fn run_verify(
             continue;
         };
         any_face_detected = true;
+
+        // Collect landmarks for liveness check
+        if let Some(landmarks) = face.landmarks {
+            landmark_sequence.push(landmarks);
+        }
 
         let embedding = recognizer.extract(&frame.data, frame.width, frame.height, face)?;
         let result = matcher.compare(&embedding, gallery, threshold);
@@ -390,6 +417,36 @@ fn run_verify(
         model_id: None,
         model_label: None,
     });
+
+    // --- Passive liveness check ---
+    // Run after detection loop so we always have full landmark data.
+    // Only gates the result when a match would otherwise succeed.
+    if liveness_enabled && result.matched {
+        let liveness = check_landmark_stability(
+            &landmark_sequence,
+            Some(liveness_min_displacement),
+        );
+
+        tracing::debug!(
+            is_live = liveness.is_live,
+            mean_eye_displacement = liveness.mean_eye_displacement,
+            frame_pairs = liveness.frame_pairs_analysed,
+            threshold = liveness_min_displacement,
+            "liveness check"
+        );
+
+        if !liveness.is_live {
+            tracing::warn!(
+                similarity = result.similarity,
+                displacement = liveness.mean_eye_displacement,
+                "liveness rejected a face that matched identity — possible spoof attempt"
+            );
+            return Err(EngineError::LivenessCheckFailed {
+                displacement: liveness.mean_eye_displacement,
+                threshold: liveness_min_displacement,
+            });
+        }
+    }
 
     Ok(VerifyResult {
         result,

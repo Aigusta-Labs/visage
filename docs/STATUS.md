@@ -1,7 +1,7 @@
 # Visage v0.3 Release Status
 
-**Last updated:** 2026-02-24
-**Build state:** v0.3.0 shipped and validated locally. All 6 implementation steps complete + model integrity enforcement + OSS governance. End-to-end tested on Ubuntu 24.04.4 LTS (v0.1.0 → v0.3.0 upgrade path verified 2026-02-24).
+**Last updated:** 2026-02-25
+**Build state:** v0.3.0 shipped and validated locally. All 6 implementation steps complete + model integrity enforcement + OSS governance + passive liveness detection. End-to-end tested on Ubuntu 24.04.4 LTS (v0.1.0 → v0.3.0 upgrade path verified 2026-02-24). Passive liveness awaits cargo build/test validation and manual spoof testing on hardware.
 
 ---
 
@@ -16,6 +16,7 @@
 | 5 | IR emitter (`visage-hw`) | ✅ Complete — UVC extension unit, quirks DB, ASUS Zenbook |
 | 6 | Packaging | ✅ Complete — .deb, systemd, pam-auth-update, `visage setup` |
 | 7 | Model integrity (`visage-models`) | ✅ Complete — pinned SHA-256, fail-closed daemon startup, shared manifest |
+| 8 | Passive liveness (`visage-core`, `visaged`) | ⚠️ Code complete — landmark stability check; awaits `cargo check`/test + hardware spoof validation |
 
 ---
 
@@ -146,7 +147,7 @@ Items marked ✅ have been verified; items marked ⬜ require hardware not avail
 - In-method D-Bus UID validation via `GetConnectionCredentials`
 - Dedicated service user with udev rules (replaces root+DeviceAllow)
 - `systemd-tmpfiles.d` entry for `/var/lib/visage` (replaces postinst mkdir)
-- Active liveness detection (blink challenge)
+- Active liveness detection (blink challenge — complements passive liveness, ADR 011)
 
 ---
 
@@ -157,7 +158,8 @@ Items marked ✅ have been verified; items marked ⬜ require hardware not avail
 | ~~No rate limiting~~ | ~~Unlimited face attempts~~ | **Resolved** — 5 failures/60 s → 5 min lockout; engine errors excluded | -- |
 | ~~D-Bus `user` param not validated~~ | ~~Compromised process can probe any user~~ | **Resolved** — caller UID verified via GetConnectionUnixUser; root exempt; session bus skips (dev mode) | ADR 007 |
 | ~~Face embeddings not encrypted~~ | ~~DB readable as root~~ | **Resolved** — AES-256-GCM at rest; per-installation key at `{db_dir}/.key` (mode 0600) | ADR 003 |
-| No active liveness | High-quality IR photo could pass | Emitter + multi-frame reduces risk; impractical in practice | ADR 007 |
+| ~~No liveness detection~~ | ~~High-quality IR photo could pass~~ | **Partially resolved** — passive landmark stability blocks static photos; video replay still possible | ADR 011 |
+| No active liveness | Video replay of enrolled user passes passive check | Active blink/head-turn challenge required — deferred to v0.4 | ADR 011 |
 | `MemoryDenyWriteExecute=false` | Daemon can map W+X pages | Architectural: ONNX Runtime requires JIT; all other sandbox directives apply | ADR 007 |
 | Ubuntu only | No other distributions | .deb ships; NixOS, AUR, COPR pending | ADR 007 |
 | ~1.4s verify latency | Above 500ms target | Hardware-dependent: CPU-only ONNX on USB webcam; target <500 ms requires IR camera + hardware acceleration | -- |
@@ -169,11 +171,11 @@ Items marked ✅ have been verified; items marked ⬜ require hardware not avail
 | Crate | Tests | What they cover |
 |-------|-------|----------------|
 | `pam-visage` | 5 | PAM/syslog constant values, D-Bus error handling without daemon |
-| `visage-core` | 27 | Detection, alignment, recognition preprocessing, matching |
+| `visage-core` | 38 | Detection, alignment, recognition preprocessing, matching, liveness landmark stability |
 | `visage-hw` | 9 | Frame processing, CLAHE, dark frame detection, pixel conversion |
 | `visage-models` | 4 | SHA-256 verification: missing file, checksum mismatch, checksum match, missing directory |
 | `visaged` | 14 | Rate limiting, store roundtrip, encryption, corruption hardening |
-| **Total** | **59** | **Unit tests — no integration tests; no hardware tests** |
+| **Total** | **70** | **Unit tests — no integration tests; no hardware tests** |
 
 Integration tests (camera + inference + daemon + PAM) are not present. They require physical
 hardware (IR camera) and are deferred to manual acceptance testing on Ubuntu 24.04.

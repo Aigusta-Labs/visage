@@ -17,7 +17,7 @@ are active in the current codebase. Items marked **(roadmap)** are not yet prese
 | Threat | Mitigation | Status |
 |--------|------------|--------|
 | Brute force (repeated attempts) | Rate limiting + lockout after N failures | ✅ v0.3 — implemented |
-| Stolen photo (printed) | Multi-frame confirmation + IR emitter support (when available) | ✅ v0.3 — IR recommended; RGB webcams are supported |
+| Stolen photo (printed) | Passive liveness (landmark stability) + IR emitter support | ✅ v0.3 — landmark stability rejects static images; IR recommended |
 | Model tampering / substitution | Strict SHA-256 verification on download + daemon startup | ✅ v0.3 — implemented |
 | Replay attack (recorded video) | IR strobe pattern detection (odd/even frame analysis) | ⬜ Roadmap — IR emitter is on but no strobe challenge |
 | Unauthorized enrollment | Root-only enrollment via D-Bus policy | ✅ v0.3 — D-Bus policy restricts Enroll to root |
@@ -29,8 +29,9 @@ are active in the current codebase. Items marked **(roadmap)** are not yet prese
 
 | Threat | Mitigation | Status |
 |--------|------------|--------|
+| Static photo (printed or displayed) | Passive landmark stability: eye landmarks must shift between frames | ✅ v0.3 — `check_landmark_stability` in `visage-core` |
 | Static photo/mask in IR | Active challenge: random blink/turn request | ⬜ Roadmap |
-| Screen replay | Motion parallax detection across frames | ⬜ Roadmap |
+| Screen replay (video) | Motion parallax detection across frames | ⬜ Roadmap |
 
 ### Tier 2 — Advanced (roadmap)
 
@@ -109,12 +110,18 @@ require structured journal fields (sd_journal_send) rather than plain syslog —
 
 ## Known Security Gaps (v0.3)
 
-1. **No active liveness detection.** A high-quality photograph in the IR band could
-   potentially pass verification. The IR emitter increases the difficulty but does not
-   eliminate the threat.
+1. **No active liveness detection.** Passive landmark stability blocks printed photos and
+   static images, but a video replay attack (pre-recorded footage of the user) will pass
+   the liveness check because landmarks move naturally in video. Active challenges (blink
+   request, head turn) are required to address this — deferred to v0.4.
 
 2. **UID validation is not based on `GetConnectionCredentials`.** The daemon validates the
    caller UNIX UID against the target username, but it does not yet use
    `GetConnectionCredentials`.
 
 3. **Root daemon with W+X pages.** `MemoryDenyWriteExecute=false` weakens sandbox.
+
+4. **Passive liveness threshold is tunable.** `VISAGE_LIVENESS_MIN_DISPLACEMENT` defaults
+   to 0.8 px. Cameras with very low frame rates or high sensor noise may require adjustment.
+   Setting `VISAGE_LIVENESS_ENABLED=0` disables the check entirely — this is intentional
+   for development but should not be used in production.

@@ -5,10 +5,12 @@
 
 pub mod alignment;
 pub mod detector;
+pub mod liveness;
 pub mod recognizer;
 pub mod types;
 
 pub use detector::FaceDetector;
+pub use liveness::{check_landmark_stability, LivenessResult};
 pub use recognizer::FaceRecognizer;
 pub use types::{BoundingBox, CosineMatcher, Embedding, FaceModel, MatchResult, Matcher};
 
