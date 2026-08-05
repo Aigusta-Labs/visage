@@ -1,0 +1,9 @@
+[device]
+vendor_id  = 0x04F2
+product_id = 0xB6D0
+name       = "Lenovo ThinkPad P14s Gen 2a 21A0000RMX IR Camera"
+
+[emitter]
+unit          = 14
+selector      = 6
+control_bytes = [1, 3, 2, 0, 0, 0, 0, 0, 0]
