@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+### Fixed
+
+- **Nix package: `bindgen` could not find libclang.** `v4l2-sys-mit` (pulled in by
+  `visage-hw` for camera capture) runs `bindgen` in its build script, which dlopens
+  libclang. `packaging/nix/default.nix` declared only `pkg-config` in
+  `nativeBuildInputs`, so `nix build .#visage` failed with *"Unable to find libclang
+  … set the `LIBCLANG_PATH` environment variable"*. Added `rustPlatform.bindgenHook`.
+
+  `flake.nix` has carried `llvmPackages.libclang` + `LIBCLANG_PATH` for the devShell
+  since it was written, so `cargo build` in a dev shell always worked — the *package*
+  never did. Nothing caught the difference because no consumer referenced
+  `pkgs.visage`: `services.visage.enable` is set on no host and the package is in no
+  `systemPackages`, so the derivation was never realised and every build stayed green
+  for reasons unrelated to it.
+
+- **Nix package: version label was three patch releases stale.** The derivation
+  hardcoded `version = "0.3.3"` while `[workspace.package]` was at `0.3.6`, so any
+  built artifact carried a wrong externally-visible version. Now read from
+  `Cargo.toml` so the two cannot drift.
+
+### Known issues
+
+- **`nix build .#visage` still fails offline**, now at `ort-sys`: it downloads a
+  prebuilt ONNX Runtime (`ms@1.23.2`) from `cdn.pyke.io` in its build script, which
+  a sandboxed build correctly blocks. Pointing `ORT_LIB_LOCATION` at nixpkgs'
+  `onnxruntime` (1.24.4) gets further but fails to link. Resolving this needs a
+  decision — most likely the `load-dynamic` feature plus `ORT_DYLIB_PATH` wired
+  through the NixOS module, or a version-matched vendored runtime — so it is left
+  open rather than guessed at.
+
 ## v0.3.6 — 2026-07-07
 
 Security hardening batch — defense-in-depth on the D-Bus authorization surface,

@@ -15,21 +15,40 @@
 , pam
 , dbus
 , openssl
+, onnxruntime
 , substituteAll ? null
 }:
 
 rustPlatform.buildRustPackage {
   pname = "visage";
-  version = "0.3.3";
+  # Sourced from [workspace.package] rather than hardcoded: this read "0.3.3"
+  # while the workspace was at 0.3.6, so `nix build` produced an artifact whose
+  # externally-visible version was three patch releases stale. Nothing catches
+  # that — the derivation builds happily under any label.
+  version = (lib.importTOML ../../Cargo.toml).workspace.package.version;
 
   src = lib.cleanSource ../..;
 
   cargoLock.lockFile = ../../Cargo.lock;
 
-  nativeBuildInputs = [ pkg-config ];
+  # bindgenHook: `v4l2-sys-mit` (via visage-hw → camera capture) runs bindgen in
+  # its build script, which dlopens libclang. Without it the build dies with
+  # "Unable to find libclang ... set the LIBCLANG_PATH environment variable".
+  # flake.nix already carries llvmPackages.libclang + LIBCLANG_PATH for the
+  # devShell, so `cargo build` in a dev shell has always worked — but the
+  # PACKAGE never had it, and nothing caught the difference because no consumer
+  # referenced pkgs.visage: services.visage.enable is set on no host and the
+  # package is in no systemPackages, so the derivation was never realised.
+  # Found 2026-08-16 the first time a host tried to install it.
+  nativeBuildInputs = [ pkg-config rustPlatform.bindgenHook ];
   # openssl: `ort` (ONNX Runtime) pulls `ureq` → `native-tls` → `openssl-sys`,
   # whose build script needs the system OpenSSL at link time (issue #38).
   buildInputs = [ pam dbus openssl ];
+
+  # ort-sys downloads a prebuilt ONNX Runtime from cdn.pyke.io in its build
+  # script, which the nix sandbox correctly blocks — so the package could never
+  # build offline at all. Point it at nixpkgs' onnxruntime instead.
+  ORT_LIB_LOCATION = "${onnxruntime}";
 
   # cargo test runs unit tests; integration tests require a camera + daemon
   doCheck = true;
