@@ -22,15 +22,42 @@
   built artifact carried a wrong externally-visible version. Now read from
   `Cargo.toml` so the two cannot drift.
 
-### Known issues
+- **Nix package: ONNX Runtime is now fetched hermetically.** `ort-sys` downloads a
+  prebuilt runtime from `cdn.pyke.io` in its build script, which a sandboxed build
+  correctly blocks — so `nix build .#visage` could never work offline. Pointing
+  `ORT_LIB_LOCATION` at nixpkgs' `onnxruntime` does not help either: `ort` links
+  **statically** by default and nixpkgs ships only `.so`, giving *"could not link to
+  the ONNX Runtime build in …"*.
 
-- **`nix build .#visage` still fails offline**, now at `ort-sys`: it downloads a
-  prebuilt ONNX Runtime (`ms@1.23.2`) from `cdn.pyke.io` in its build script, which
-  a sandboxed build correctly blocks. Pointing `ORT_LIB_LOCATION` at nixpkgs'
-  `onnxruntime` (1.24.4) gets further but fails to link. Resolving this needs a
-  decision — most likely the `load-dynamic` feature plus `ORT_DYLIB_PATH` wired
-  through the NixOS module, or a version-matched vendored runtime — so it is left
-  open rather than guessed at.
+  Now the same archive `ort-sys` wants is fetched via `fetchurl` with a pinned hash
+  and unpacked into a small derivation that `ORT_LIB_LOCATION` points at.
+  Version-matched by construction (1.23.2, what `ort 2.0.0-rc.11` expects), so no
+  version skew, and reproducible.
+
+  The archive is **raw LZMA2, not an `.xz` container**, and needs
+  `xz --format=raw --lzma2=dict=64MiB`. The 64 MiB dictionary is required and is not
+  the default: plain `--lzma2` decodes only ~8.9 MB of the ~93 MB payload and exits
+  non-zero, which — piped into `tar` — looks like a clean extraction, because a
+  truncated `ar` archive still yields a plausible `libonnxruntime.a`. A size floor
+  now refuses any decode under 80 MB.
+
+- **Nix package: PAM module path no longer hardcoded.** `postInstall` looked for
+  `target/release/libpam_visage.so`, but current `rustPlatform.buildRustPackage`
+  passes `--target`, so cargo emits to `target/<triple>/release/`. It is now located
+  at install time and the build fails loudly if it is absent or ambiguous — which it
+  was, three times over: `release/deps/`, `release-tmp/`, and the real one.
+
+- **`clippy::excessive_precision` on two pre-existing test literals**, newly flagged
+  by a more recent clippy and failing `cargo clippy -- -D warnings`. In
+  `alignment.rs` the value carried a trailing zero and was trimmed. In `store.rs` the
+  excess precision is deliberate — that test asserts a bit-exact f32 round-trip — so
+  it is annotated with a justified `#[allow]` rather than truncated, which would have
+  quietly weakened the case it exists to test.
+
+### Notes
+
+- `nix build .#visage` now succeeds end-to-end: compile, unit tests, and install of
+  the daemon, CLI, PAM module, D-Bus policy and both systemd units.
 
 ## v0.3.6 — 2026-07-07
 

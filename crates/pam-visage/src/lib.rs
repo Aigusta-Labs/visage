@@ -316,7 +316,16 @@ mod tests {
                         || msg.contains("not provided")
                         || msg.contains("Failed to connect")
                         || msg.contains("no enrolled models")
-                        || msg.contains("unknown user"),
+                        || msg.contains("unknown user")
+                        // No system bus socket at all — the D-Bus client fails at
+                        // open() with ENOENT rather than reaching a name-resolution
+                        // error. This is the normal case in a hermetic build sandbox,
+                        // a container, or a chroot, where /run/dbus/system_bus_socket
+                        // does not exist. The list above only covered environments
+                        // where the bus is present but visaged is not on it, so this
+                        // test failed the whole build under `nix build` and would do
+                        // the same in any containerised CI.
+                        || msg.contains("No such file or directory"),
                     "unexpected error message: {msg}"
                 );
             }

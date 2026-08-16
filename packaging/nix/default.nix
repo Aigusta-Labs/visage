@@ -15,9 +15,61 @@
 , pam
 , dbus
 , openssl
-, onnxruntime
+, fetchurl
+, stdenvNoCC
+, xz
 , substituteAll ? null
 }:
+
+# ONNX Runtime, fetched hermetically instead of by ort-sys at build time.
+#
+# ort-sys's build script downloads this exact archive from cdn.pyke.io, which a
+# sandboxed build correctly blocks — so `nix build .#visage` could never work
+# offline. Pointing ORT_LIB_LOCATION at nixpkgs' onnxruntime does not help
+# either: ort links STATICALLY by default and nixpkgs ships only .so, so the
+# build fails with "could not link to the ONNX Runtime build in ...".
+#
+# So fetch the same archive ort-sys wants, pinned by hash. Version-matched by
+# construction (1.23.2 — what ort 2.0.0-rc.11 expects), no version skew, and
+# reproducible. The payload is a single flat libonnxruntime.a; it is installed
+# to BOTH $out and $out/lib because ort-sys probes both.
+#
+# The archive is raw LZMA2, NOT an .xz container — `tar xf` reports "does not
+# look like a tar archive". It needs `xz --format=raw --lzma2`.
+let
+  ortVersion = "1.23.2";
+  ortStatic = stdenvNoCC.mkDerivation {
+    pname = "onnxruntime-static-for-ort-sys";
+    version = ortVersion;
+    src = fetchurl {
+      url = "https://cdn.pyke.io/0/pyke:ort-rs/ms@${ortVersion}/x86_64-unknown-linux-gnu.tar.lzma2";
+      sha256 = "0px3pb5jv04y602458g1d6nr1q3rdiqdd62n5a0hgr5fm9cx0mwc";
+    };
+    nativeBuildInputs = [ xz ];
+    dontUnpack = true;
+    installPhase = ''
+      runHook preInstall
+      mkdir -p "$out/lib"
+      # dict=64MiB is REQUIRED and is not the default. Plain `--lzma2` decodes
+      # only ~8.9 MB of the ~93 MB payload and exits non-zero; piped into tar
+      # with stderr hidden that looks like a successful extraction, because a
+      # truncated ar archive still yields a plausible libonnxruntime.a.
+      xz --format=raw --lzma2=dict=64MiB -dc "$src" | tar xf - -C "$out/lib"
+
+      # Floor guard: silent under-extraction is the failure mode this hit, so
+      # refuse a suspiciously small result rather than shipping a stub that
+      # fails later at link time with an unrelated-looking error.
+      test -f "$out/lib/libonnxruntime.a" || { echo "libonnxruntime.a missing"; exit 1; }
+      sz=$(stat -c %s "$out/lib/libonnxruntime.a")
+      if [ "$sz" -lt 80000000 ]; then
+        echo "libonnxruntime.a is $sz bytes, expected ~93M — truncated decode"; exit 1
+      fi
+
+      ln -s "$out/lib/libonnxruntime.a" "$out/libonnxruntime.a"
+      runHook postInstall
+    '';
+  };
+in
 
 rustPlatform.buildRustPackage {
   pname = "visage";
@@ -45,10 +97,8 @@ rustPlatform.buildRustPackage {
   # whose build script needs the system OpenSSL at link time (issue #38).
   buildInputs = [ pam dbus openssl ];
 
-  # ort-sys downloads a prebuilt ONNX Runtime from cdn.pyke.io in its build
-  # script, which the nix sandbox correctly blocks — so the package could never
-  # build offline at all. Point it at nixpkgs' onnxruntime instead.
-  ORT_LIB_LOCATION = "${onnxruntime}";
+  # See the ortStatic note above. This is what stops ort-sys reaching the network.
+  ORT_LIB_LOCATION = "${ortStatic}";
 
   # cargo test runs unit tests; integration tests require a camera + daemon
   doCheck = true;
@@ -59,9 +109,27 @@ rustPlatform.buildRustPackage {
   '';
 
   postInstall = ''
-    # PAM module (cdylib — not installed by cargo install)
-    install -Dm755 target/release/libpam_visage.so \
-      $out/lib/security/pam_visage.so
+    # PAM module (cdylib — not installed by cargo install).
+    #
+    # Located rather than hardcoded: this said `target/release/`, but current
+    # rustPlatform.buildRustPackage passes --target, so cargo emits to
+    # target/<triple>/release/ and the install failed with
+    #   install: cannot stat 'target/release/libpam_visage.so'
+    # Hardcoding the triple instead would just move the breakage to the next
+    # nixpkgs change, so find it and fail loudly if it is absent or ambiguous.
+    # Match the canonical `release/` segment exactly. A bare -name found three
+    # copies in turn, each of which the guard refused rather than guessing:
+    #   release/deps/libpam_visage.so   raw compilation artifact
+    #   release-tmp/libpam_visage.so    buildRustPackage's staging dir
+    #   release/libpam_visage.so        the one we want
+    pam_so=$(find target -type f -path '*/release/libpam_visage.so' -print)
+    n=$(printf '%s\n' "$pam_so" | grep -c .)
+    if [ "$n" -ne 1 ]; then
+      echo "expected exactly 1 libpam_visage.so under target/ (excluding deps/), found $n:" >&2
+      printf '  %s\n' $pam_so >&2
+      exit 1
+    fi
+    install -Dm755 "$pam_so" $out/lib/security/pam_visage.so
 
     # D-Bus system bus policy
     install -Dm644 packaging/dbus/org.freedesktop.Visage1.conf \

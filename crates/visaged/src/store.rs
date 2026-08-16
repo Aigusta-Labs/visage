@@ -443,7 +443,15 @@ mod tests {
         values[4] = f32::MIN_POSITIVE;
         values[5] = f32::EPSILON;
         values[6] = std::f32::consts::PI;
-        values[7] = 0.123456789;
+        // The excess precision is deliberate and must NOT be trimmed to satisfy
+        // clippy::excessive_precision: this test asserts a BIT-EXACT round-trip
+        // (to_bits() below), and the point of this value — alongside -0.0,
+        // MIN_POSITIVE, EPSILON and PI — is that a literal with more digits than
+        // f32 can represent still survives the encode/decode unchanged once
+        // rounded. Truncating it would silently weaken the case it exists to test.
+        #[allow(clippy::excessive_precision)]
+        let v = 0.123456789;
+        values[7] = v;
 
         let bytes = embedding_to_bytes(&values);
         let recovered = bytes_to_embedding_strict(&bytes).unwrap();
