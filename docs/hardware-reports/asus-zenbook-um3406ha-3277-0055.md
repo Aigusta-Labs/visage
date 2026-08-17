@@ -196,6 +196,36 @@ confound.
 **Sample size is n=1 on the spoof side.** This is recorded as a measurement, not yet as a
 threat-model revision.
 
+## Resolution on this host (2026-08-17)
+
+`liveness.minDisplacement` lowered **0.8 → 0.1**. 0.1 sits ~5× below the lowest live
+displacement measured (0.263), so every live sample passes, while still rejecting a **rigidly
+mounted** photo — the only spoof shape this metric catches. Chosen over disabling liveness
+because it is strictly more restrictive at identical UX cost.
+
+**Measured after the change:** 15 verify attempts, **12 pass, 0 liveness rejections**. The 3
+non-passes were `no face detected in any captured frame`, visually confirmed as nobody in
+front of the camera. Previously: 5 liveness rejections in 25 attempts.
+
+**Both PAM surfaces verified end to end by the operator:**
+
+```text
+sudo:        [sudo] Visage: face recognized
+lock screen: pam_visage: face matched for user 'cc' → Authenticated successfully
+             → hypridle: Wayland session got unlocked
+```
+
+⚠️ **The lock screen does not use `/etc/pam.d/`.** On a DMS/quickshell desktop the locker
+authenticates against a generated `dankshell` config under
+`~/.local/state/esver-<theme>/DankMaterialShell/pam/`, whose module set is **identical to
+`/etc/pam.d/login`** — so it inherits `pam_visage` from the `login` service the module already
+wires, and face unlock works with no extra configuration. Auditing `/etc/pam.d/` alone will
+tell you the lock screen is unwired when it is not. Find the real path with:
+
+```bash
+journalctl | grep 'Starting pam session' | tail -1
+```
+
 ## Recommended configuration
 
 ```nix
@@ -205,9 +235,13 @@ services.visage = {
 };
 ```
 
-Leave `liveness.minDisplacement` at its 0.80 default. It is a weak barrier on this module, but
-until an emitter quirk or a stronger liveness signal lands it is the only one, and lowering it
-measurably widens what a screen spoof can do.
+```nix
+    liveness.minDisplacement = 0.1;   # see Resolution above — 0.8 costs ~1-in-6 real logins
+```
+
+The 0.8 default is not defensible on this module: it rejected ~1 in 6 genuine attempts while
+the hand-held spoof (0.681) cleared the live range regardless. Raising it back buys no measured
+protection. The real fix is strobe-differential analysis, not a threshold.
 
 ## Open work for this module
 
