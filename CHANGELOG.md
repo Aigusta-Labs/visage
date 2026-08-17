@@ -16,6 +16,27 @@
   not recognise the enrolled face — so a failed onboarding cannot look like a
   successful one.
 
+- **First hardware validation of passive liveness — and it did not discriminate.**
+  New hardware report for the ASUS Zenbook 14 UM3406HA / Shinetech `3277:0055` IR
+  module, executing the blocking §2 checklist in `docs/liveness-remaining-work.md`
+  that had been open since 2026-02-25.
+
+  A hand-held phone-screen spoof produced landmark displacement of **0.681 px** —
+  *higher* than two genuine live attempts (0.263, 0.670) — so no threshold on that
+  metric admits the live minimum while rejecting the spoof. The identity stage
+  matched the same photo at **0.9013**. Live users were falsely rejected ~18% of
+  the time at the default 0.8 px floor. `DEFAULT_MIN_EYE_DISPLACEMENT` is documented
+  against 640×480@30fps; this sensor is 640×360, and its "printed photo <0.3 px"
+  figure assumes a *rigidly mounted* photo rather than one held in a hand.
+
+  Sample is **n=1** on the spoof side, so `threat-model.md`'s "static photo" claim is
+  deliberately left unrevised. Do not lower `liveness.minDisplacement` on this
+  evidence — it would widen the hole rather than close it.
+
+  Also documented: this model ships **more than one camera module**, so the
+  `04f2:b6d9` quirk does not apply to `3277:0055` units, and a *missing* quirk does
+  not imply *missing illumination* — the emitter strobes by firmware default here.
+
 ### Fixed
 
 - **Nix package: `bindgen` could not find libclang.** `v4l2-sys-mit` (pulled in by

@@ -27,7 +27,7 @@ Run `visage discover` to get the answer for your machine.
 |---|---|---|---|
 | **Lenovo ThinkPad** T/X/L/P series (pre-Gen 11) | Optional | `uvcvideo` | Separate USB IR node alongside RGB webcam. T14, T14s, X1 Carbon Gen 6–10 frequently reported working with Howdy. Verify node with `visage discover`. |
 | **HP EliteBook** 8xx G8+ | Optional | `uvcvideo` | IR + presence detection on many SKUs. UVC-based on tested G8/G9 configs. Newer "AI PC" models may shift to IPU6. |
-| **ASUS ZenBook** (UX series, ZenBook 14) | Yes (most SKUs) | `uvcvideo` | Reference hardware for Visage — ZenBook 14 UM3406HA tested end-to-end. |
+| **ASUS ZenBook** (UX series, ZenBook 14) | Yes (most SKUs) | `uvcvideo` | Reference hardware for Visage — ZenBook 14 UM3406HA tested end-to-end. ⚠️ **The same model ships more than one camera module.** The `04f2:b6d9` (Chicony) quirk does not apply to `3277:0055` (Shinetech) units. Model name does not predict emitter support — run `visage discover`. See [report](hardware-reports/asus-zenbook-um3406ha-3277-0055.md). |
 | **TUXEDO** InfinityBook, Pulse | Some SKUs | `uvcvideo` | Linux-first OEM; users have reported Howdy working on IR-equipped configs. |
 
 ### Tier 2 — Likely supported but more variable
@@ -106,6 +106,18 @@ VID:PID to the correct control bytes for each known device.
 | Lenovo ThinkPad X1 Carbon Gen 9 20XW00FPUS | `174f:2454` | ✅ Verified on hardware |
 | Lenovo ThinkBook 14 MP2PQAZG | `30c9:00c2` | ✅ Verified on hardware |
 | HP OmniBook X Flip | `30c9:0120` | ✅ Verified on hardware |
+
+**Known devices with NO quirk entry:**
+
+| Device | VID:PID | Notes |
+|--------|---------|-------|
+| ASUS Zenbook 14 UM3406HA (Shinetech module) | `3277:0055` | No quirk — but the **emitter strobes anyway** by firmware default, so face auth works without one. Exposes the Microsoft Camera Control XU (`{0f3f95dc-2632-4c4e-92c9-a04782f43bc8}`) at unit 14 advertising `MSXU_CONTROL_FACE_AUTHENTICATION` (selector 6) and `MSXU_CONTROL_METADATA` (selector 9) — **not** `IR_TORCH`. See [report](hardware-reports/asus-zenbook-um3406ha-3277-0055.md). |
+
+⚠️ **A missing quirk does not imply missing illumination.** On modules whose firmware
+enables face-auth mode by default, the emitter fires regardless and `visaged` still logs
+`no IR emitter quirk for device; proceeding without illumination`. Confirm with the
+per-frame brightness sequence (`visage test -n 20`) — a strobing emitter alternates
+lit/unlit every frame. A dark-frame *count* cannot distinguish that from an exposure ramp.
 
 **Contributing a quirk for your camera:**
 

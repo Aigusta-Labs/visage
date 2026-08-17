@@ -1,7 +1,9 @@
 # Visage v0.3 Release Status
 
 **Last updated:** 2026-07-07
-**Build state:** v0.3.6 shipped. All 6 implementation steps complete + model integrity enforcement + OSS governance + passive liveness detection. Since v0.3.3: fixed capture degradation on shared webcams (per-capture V4L2 format re-assert + in-process camera self-heal, #48); the IR emitter quirks DB now covers ASUS Zenbook 14 UM3406HA, Lenovo ThinkPad X1 Carbon Gen 9, Lenovo ThinkBook 14 MP2PQAZG, and HP OmniBook X Flip; NixOS flake build fixed; Dependabot security updates + a scheduled `cargo audit` enabled; contribution review reframed problem-first (ADR 010 §9). v0.3.6 added a security hardening batch: in-process root checks on the privileged D-Bus methods (`Enroll`/`RemoveModel`/`ListModels`), the `VISAGE_SESSION_BUS` flag and passive liveness now fail closed, `zbus` pinned to the tokio executor (drops the `async-io` stack), and an AES-256-GCM known-answer + blob-format test. End-to-end tested on Ubuntu 24.04.4 LTS. Passive liveness still awaits manual spoof testing on hardware.
+**Build state:** v0.3.6 shipped. All 6 implementation steps complete + model integrity enforcement + OSS governance + passive liveness detection. Since v0.3.3: fixed capture degradation on shared webcams (per-capture V4L2 format re-assert + in-process camera self-heal, #48); the IR emitter quirks DB now covers ASUS Zenbook 14 UM3406HA, Lenovo ThinkPad X1 Carbon Gen 9, Lenovo ThinkBook 14 MP2PQAZG, and HP OmniBook X Flip; NixOS flake build fixed; Dependabot security updates + a scheduled `cargo audit` enabled; contribution review reframed problem-first (ADR 010 §9). v0.3.6 added a security hardening batch: in-process root checks on the privileged D-Bus methods (`Enroll`/`RemoveModel`/`ListModels`), the `VISAGE_SESSION_BUS` flag and passive liveness now fail closed, `zbus` pinned to the tokio executor (drops the `async-io` stack), and an AES-256-GCM known-answer + blob-format test. End-to-end tested on Ubuntu 24.04.4 LTS.
+
+⚠️ **Passive liveness had its first hardware spoof validation on 2026-08-17, and it did not pass.** On an ASUS Zenbook 14 UM3406HA with a Shinetech `3277:0055` IR module, a hand-held phone-screen spoof produced landmark displacement (**0.681 px**) *higher* than two genuine live attempts (**0.263**, 0.670), so no threshold separates them — and the identity stage matched that photo at **0.9013**. Live users were falsely rejected ~18% of the time at the default 0.8 px floor. Sample is n=1 on the spoof side, so `threat-model.md`'s claims are **not** yet revised. See [`liveness-remaining-work.md`](liveness-remaining-work.md) and the [hardware report](hardware-reports/asus-zenbook-um3406ha-3277-0055.md).
 
 ---
 
@@ -16,7 +18,7 @@
 | 5 | IR emitter (`visage-hw`) | ✅ Complete — UVC extension unit, quirks DB (ASUS Zenbook 14, Lenovo X1 Carbon Gen 9) |
 | 6 | Packaging | ✅ Complete — .deb, systemd, pam-auth-update, `visage setup` |
 | 7 | Model integrity (`visage-models`) | ✅ Complete — pinned SHA-256, fail-closed daemon startup, shared manifest |
-| 8 | Passive liveness (`visage-core`, `visaged`) | ⚠️ Code complete — landmark stability check; awaits `cargo check`/test + hardware spoof validation |
+| 8 | Passive liveness (`visage-core`, `visaged`) | ❌ **Hardware-validated 2026-08-17 and did not discriminate** — a hand-held screen spoof displaced *more* than a live face on `3277:0055`. Code works as specified; the metric does not separate live from spoof on that module. Do not lower the threshold. |
 
 ---
 
