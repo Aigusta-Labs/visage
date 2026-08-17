@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Added
+
+- **`visage onboard` — one command from nothing to working face auth.** Downloads
+  the ONNX models, enrolls several labelled angles with a prompt between each, and
+  verifies against the daemon before claiming success. Replaces the `setup` →
+  `enroll` → `list` → test sequence, which had two traps: `enroll` defaulted to the
+  wrong user under sudo (below), and a single capture is fragile on hardware where
+  the IR emitter strobes or has no quirk entry.
+
+  It refuses to onboard `root` unless `--user root` is given explicitly, keeps
+  whichever captures succeeded if one fails, and exits non-zero if verification does
+  not recognise the enrolled face — so a failed onboarding cannot look like a
+  successful one.
+
 ### Fixed
 
 - **Nix package: `bindgen` could not find libclang.** `v4l2-sys-mit` (pulled in by
@@ -53,6 +67,21 @@
   excess precision is deliberate — that test asserts a bit-exact f32 round-trip — so
   it is annotated with a justified `#[allow]` rather than truncated, which would have
   quietly weakened the case it exists to test.
+
+- **`--user` defaulted to `root` under `sudo`, silently enrolling the wrong account.**
+  Every privileged subcommand is root-only by the D-Bus policy, so they are always
+  run as `sudo visage …` — where `$USER` is `root`. `sudo visage enroll --label x`
+  therefore registered the face against **root** while PAM went on looking up the
+  real user, found nothing, and fell through to the password prompt.
+
+  The failure was silent in the worst way: enrollment printed *"Enrolled
+  successfully"*, `sudo` kept asking for a password, and nothing indicated the two
+  were about different users. It also left a face credential attached to the most
+  privileged account on the machine, created by accident.
+
+  `current_user()` now prefers `SUDO_USER`, falling back to `$USER` when not under
+  sudo. The help text on `enroll`, `verify`, `list` and `remove` said "defaults to
+  `$USER`" and has been corrected too.
 
 ### Notes
 
