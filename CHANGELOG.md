@@ -66,6 +66,22 @@
   fact that passive liveness fails closed below two frames with a detected
   face — so lowering it to 2 can reintroduce false rejects.
 
+- **The hardware quirks database is now tested.** `crates/visage-hw/src/quirks.rs` had no
+  tests, and `quirk_db()` skips a malformed TOML rather than panicking — correct for a daemon
+  that authenticates logins, but it means an embedded-but-broken quirk compiles, ships, and
+  silently never fires. At runtime that is indistinguishable from a camera with no quirk.
+
+  Four assertions now run in CI: every embedded source parses (count compared against
+  `QUIRK_SOURCES.len()`, so it cannot drift as cameras are added), every parsed quirk is
+  reachable via `lookup_quirk`, no two entries claim the same VID:PID, and emitter payloads are
+  coherent (non-empty `control_bytes`; `off_bytes` matching its length). Each was verified to
+  **fail** on a deliberately broken input, not merely to pass.
+
+  `contrib/hw/README.md` also gained the registration step it was missing. It previously went
+  from "create a TOML file" straight to "submit a PR", never mentioning that a file must be
+  added to `QUIRK_SOURCES` to be read at all — so a contributor following it literally would
+  ship a quirk that does nothing.
+
 ### Changed
 
 - **`services.visage.pam.enable`'s description no longer overstates what it
