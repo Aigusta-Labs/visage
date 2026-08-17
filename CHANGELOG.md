@@ -38,6 +38,62 @@
   `04f2:b6d9` quirk does not apply to `3277:0055` units, and a *missing* quirk does
   not imply *missing illumination* — the emitter strobes by firmware default here.
 
+- **`pam_visage.so` now accepts a `timeout=N` module argument**, exposed as
+  `services.visage.pam.timeoutSeconds`. The D-Bus method timeout was hard-coded
+  at 3 seconds.
+
+  That is not only a hang guard — it is an upper bound on how long
+  authentication may take. A verify that exceeds it makes PAM fall through to
+  the password prompt, and the outcome is **indistinguishable from a failed
+  match**: both return `PAM_IGNORE`, and nothing in the PAM log says "timed
+  out". On CPU-only hardware a verify can legitimately take seconds; measured
+  median on an ASUS Zenbook 14 was **2273 ms**, leaving under 700 ms of
+  headroom against a 3-second ceiling. The symptom of getting that wrong is
+  intermittent password prompts that look exactly like recognition failures.
+
+  A malformed, zero, or unparseable value logs a warning and falls back to the
+  3-second default rather than failing — a typo in a PAM line must never be
+  able to lock a user out.
+
+- **Five daemon settings are now NixOS options** — `framesPerVerify`,
+  `framesPerEnroll`, `warmupFrames`, `verifyTimeoutSeconds`, and
+  `emitter.enable`. The daemon has always read the corresponding
+  `VISAGE_*` environment variables, but the module exposed none of them, so the
+  only way to tune a deployment was a hand-written systemd drop-in.
+
+  `framesPerVerify` is the main latency knob, and its documentation now records
+  both interactions that make it non-obvious: the PAM timeout above, and the
+  fact that passive liveness fails closed below two frames with a detected
+  face — so lowering it to 2 can reintroduce false rejects.
+
+### Changed
+
+- **`services.visage.pam.enable`'s description no longer overstates what it
+  wires.** It claimed face auth for "sudo, login, and screen lock"; it wires
+  `sudo` and `login` only. Screen lock is covered *indirectly* and only for
+  lockers that derive their PAM stack from `login` — DMS/quickshell generates a
+  config with an identical module set, and so inherits face auth for free.
+  Lockers declaring their own PAM service get nothing and must be wired
+  explicitly; the description now shows how, and warns that grepping
+  `/etc/pam.d/` alone will report the lock screen as unwired when it is not,
+  because a locker's config may live in the user's state directory.
+
+- **`visage onboard` no longer verifies the instant the last capture returns.**
+  It paused for zero milliseconds, so `[3/3]` fired while the user was still
+  holding the pose they struck to press Enter — the posture passive liveness is
+  most likely to reject, since it looks for landmark movement. Onboarding could
+  enroll perfectly and then fail its own verification for a reason unrelated to
+  enrollment quality. Now waits two seconds and says what to do with them.
+
+- **`visage onboard`'s failure message no longer asserts a cause it cannot
+  know.** It told users to check lighting and the IR emitter quirk. The daemon
+  deliberately collapses every failure into a plain non-match — distinguishing
+  "wrong face" from "identity matched but liveness rejected" would tell an
+  attacker holding a photograph that the photograph was recognised — so the CLI
+  genuinely does not know why a verify failed. It now says so, points at
+  `journalctl -u visaged`, and lists the causes in rough order of likelihood
+  with the liveness one first.
+
 ### Fixed
 
 - **Nix package: `bindgen` could not find libclang.** `v4l2-sys-mit` (pulled in by

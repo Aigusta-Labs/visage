@@ -301,7 +301,18 @@ async fn main() -> Result<()> {
             }
 
             // 3. Prove it against the daemon rather than trusting the enroll return.
-            println!("\n[3/3] Verifying");
+            //
+            // Pause first. Without it this fires within a millisecond of the last
+            // capture returning, while the user is still holding the pose they
+            // struck to press Enter — which is the posture passive liveness is
+            // most likely to reject, since it looks for landmark movement. The
+            // result was an onboarding that enrolled perfectly and then failed
+            // its own verification for a reason that had nothing to do with
+            // enrollment quality.
+            println!("\n[3/3] Verifying — look at the camera and behave normally.");
+            if !no_prompt {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
             match proxy.verify(&user).await {
                 Ok(true) => {
                     println!("  ✓ recognised '{user}' from {} model(s)", enrolled.len());
@@ -313,10 +324,32 @@ async fn main() -> Result<()> {
                 Ok(false) => {
                     println!("  ✗ enrolled, but verification did not recognise you.");
                     println!(
-                        "\n{} model(s) are stored. Re-run to add more angles, or check\n\
-                         lighting — `visage discover` will say whether this camera has an\n\
-                         IR emitter quirk; without one it depends on ambient light.",
+                        "\n{} model(s) are stored, so enrollment itself worked — this is the\n\
+                         verify step.",
                         enrolled.len()
+                    );
+                    // Deliberately does NOT assert a cause. The daemon collapses
+                    // every failure into a plain non-match so that a caller cannot
+                    // distinguish "wrong face" from "identity matched but liveness
+                    // rejected" — that distinction would tell an attacker holding a
+                    // photograph that the photograph was recognised. The CLI
+                    // therefore genuinely does not know why this failed, and
+                    // guessing sends people to the wrong subsystem.
+                    println!(
+                        "\nThe daemon does not report WHY a verify failed (distinguishing a\n\
+                         wrong face from a rejected-but-matching one would leak information),\n\
+                         so read its log for the actual reason:\n\
+                         \n    journalctl -u visaged -n 20\n\
+                         \nWhat that log will usually show, in rough order of likelihood:\n\
+                         \n  * 'liveness rejected a face that matched identity' — you were\n\
+                         recognised and the anti-spoof gate vetoed it. Tune it with\n\
+                         services.visage.liveness.minDisplacement; its default is\n\
+                         calibrated for a 640x480 30fps sensor and does not fit every\n\
+                         camera.\n\
+                         \n  * 'no face detected in any captured frame' — out of frame,\n\
+                         looking away, or too dark.\n\
+                         \n  * a low similarity score — genuinely not recognised. Re-run to\n\
+                         add more angles."
                     );
                     std::process::exit(1);
                 }
