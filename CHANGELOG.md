@@ -24,8 +24,9 @@
   A hand-held phone-screen spoof produced landmark displacement of **0.681 px** —
   *higher* than two genuine live attempts (0.263, 0.670) — so no threshold on that
   metric admits the live minimum while rejecting the spoof. The identity stage
-  matched the same photo at **0.9013**. Live users were falsely rejected ~18% of
-  the time at the default 0.8 px floor. `DEFAULT_MIN_EYE_DISPLACEMENT` is documented
+  matched the same photo at **0.9013**. Live users were falsely rejected 13–17% of
+  the time at the default 0.8 px floor — 20/23–20/24 live pass as of the journal at
+  2026-08-17 13:43 local, so the ≥9-in-10 reliability criterion is not met. `DEFAULT_MIN_EYE_DISPLACEMENT` is documented
   against 640×480@30fps; this sensor is 640×360, and its "printed photo <0.3 px"
   figure assumes a *rigidly mounted* photo rather than one held in a hand.
 

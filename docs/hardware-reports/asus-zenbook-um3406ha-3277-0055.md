@@ -23,7 +23,8 @@ Three consequences, in order of severity:
    landmark displacement was *higher* than two genuine live attempts. On this module the
    landmark-stability metric does not separate live from spoof. See
    [Liveness measurements](#liveness-measurements).
-2. **Passive liveness rejects live users ~18% of the time** on this sensor.
+2. **Passive liveness rejects live users 13–17% of the time** on this sensor (20/23–20/24
+   live pass, as of the journal at 2026-08-17 13:43 local).
 3. **The IR emitter fires anyway — and the daemon says otherwise.** Despite having no quirk,
    the emitter strobes lit/unlit every frame by firmware default. The log line
    `no IR emitter quirk for device; proceeding without illumination` is therefore misleading:
@@ -145,9 +146,21 @@ op=PAM:authentication grantors=pam_unix acct="cc" res=success
 **Identity matching never failed** across 12 attempts. Similarity ranged **0.4609–0.9847**
 against a 0.40 threshold.
 
-**Live pass rate: 9/11 = 82%**, below the ≥9-in-10 bar in [`STATUS.md`](../STATUS.md). Every
-failure was the liveness gate vetoing a face it had already recognised — never an identity
-miss.
+**Live pass rate fails the ≥9-in-10 bar in [`STATUS.md`](../STATUS.md).**
+
+Stated as-of a fixed window rather than a live rate, since the figure moves with every
+attempt — `visaged` journal, **2026-08-17 13:43:15 local**:
+
+| | |
+|---|---|
+| Post-enrollment verify attempts | **25** |
+| Matched | **20** |
+| Non-matches | **5** — of which **1 was the deliberate spoof** (a correct rejection) and 1 has unestablished provenance |
+| Live pass rate | **20/23 = 87%** to **20/24 = 83%**, depending on the ambiguous sample |
+
+Every live failure was the liveness gate vetoing a face it had **already recognised** — never
+an identity miss. The rate swung 82% → 100% → back across sub-runs with no variable held
+fixed, so treat the point estimate as weak in either direction.
 
 ## Liveness measurements
 
@@ -164,6 +177,7 @@ their margin is unmeasured — raising `logLevel` to `debug` exposes it via the
 | Live ×9 | 0.4609–0.8759 | ≥0.80 | passed |
 | **Phone screen, hand-held** | **0.9013** | **0.681** | rejected by floor |
 | Unattributed¹ | 0.7951 | 0.306 | rejected |
+| Live — post-rebuild, gen 9 | 0.8531 | **0.492** | rejected |
 
 ¹ Provenance not established — either a third sub-floor live sample or an earlier spoof
 attempt. Recorded rather than assigned.
