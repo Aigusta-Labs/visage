@@ -9,6 +9,8 @@ use std::sync::OnceLock;
 
 /// Compile-time embedded quirk for the ASUS Zenbook 14 UM3406HA IR camera.
 const QUIRK_04F2_B6D9: &str = include_str!("../../../contrib/hw/04f2-b6d9.toml");
+/// Compile-time embedded quirk for the Lenovo ThinkPad P14s Gen 2a 21A0000RMX IR Camera.
+const QUIRK_04F2_B6D0: &str = include_str!("../../../contrib/hw/04f2-b6d0.toml");
 /// Compile-time embedded quirk for the Lenovo ThinkPad X1 Carbon Gen 9 20XW00FPUS IR camera.
 const QUIRK_174F_2454: &str = include_str!("../../../contrib/hw/174f-2454.toml");
 /// Compile-time embedded quirk for the Lenovo ThinkBook 14 MP2PQAZG IR camera.
@@ -62,6 +64,7 @@ pub type CameraQuirk = QuirkFile;
 /// malformed fails CI instead of shipping inert.
 const QUIRK_SOURCES: &[(&str, &str)] = &[
     ("04f2-b6d9.toml", QUIRK_04F2_B6D9),
+    ("04f2-b6d0.toml", QUIRK_04F2_B6D0),
     ("174f-2454.toml", QUIRK_174F_2454),
     ("30c9-00c2.toml", QUIRK_30C9_00C2),
     ("30c9-0120.toml", QUIRK_30C9_0120),
