@@ -168,14 +168,67 @@ fn send_text_info(pamh: *mut libc::c_void, text: &str) {
     }
 }
 
+/// Default D-Bus method timeout, in seconds.
+///
+/// This bounds how long a stuck `visaged` can hang a login. It is *also* an
+/// upper bound on how long verification is allowed to take: a verify that
+/// exceeds it makes PAM fall through to the password prompt, and that outcome
+/// is indistinguishable from a failed match — both simply return
+/// `PAM_IGNORE`. On CPU-only hardware a verify can legitimately take seconds,
+/// so a deployment whose measured latency approaches this value should raise
+/// it with `pam_visage.so timeout=N` rather than accept intermittent password
+/// prompts it cannot diagnose.
+const DEFAULT_TIMEOUT_SECS: u64 = 3;
+
+/// Parse `timeout=N` out of the PAM module arguments.
+///
+/// Unrecognised arguments are ignored. A malformed, zero, or unparseable
+/// value logs a warning and falls back to [`DEFAULT_TIMEOUT_SECS`]: a typo in
+/// a PAM config line must never be able to lock a user out, and refusing to
+/// authenticate is a worse failure than using a slightly wrong timeout.
+///
+/// # Safety
+///
+/// `argv` must be null, or point to `argc` valid NUL-terminated C strings.
+unsafe fn parse_timeout_secs(argc: libc::c_int, argv: *const *const libc::c_char) -> u64 {
+    if argv.is_null() || argc <= 0 {
+        return DEFAULT_TIMEOUT_SECS;
+    }
+    for i in 0..argc as isize {
+        // SAFETY: caller guarantees argv holds argc valid pointers.
+        let arg_ptr = unsafe { *argv.offset(i) };
+        if arg_ptr.is_null() {
+            continue;
+        }
+        // SAFETY: PAM module arguments are NUL-terminated C strings.
+        let arg = match unsafe { CStr::from_ptr(arg_ptr) }.to_str() {
+            Ok(a) => a,
+            Err(_) => continue,
+        };
+        if let Some(value) = arg.strip_prefix("timeout=") {
+            return match value.parse::<u64>() {
+                Ok(secs) if secs > 0 => secs,
+                _ => {
+                    syslog_msg(
+                        LOG_WARNING,
+                        &format!("ignoring invalid module argument '{}'", arg),
+                    );
+                    DEFAULT_TIMEOUT_SECS
+                }
+            };
+        }
+    }
+    DEFAULT_TIMEOUT_SECS
+}
+
 /// Connect to the system bus and call `Visage1.Verify(username)`.
 ///
-/// Uses a 3-second method timeout to prevent login hangs if the daemon is stuck.
-/// Returns `Ok(false)` if the daemon responds but finds no match.
+/// `timeout_secs` bounds the D-Bus method call so a stuck daemon cannot hang
+/// the login. Returns `Ok(false)` if the daemon responds but finds no match.
 /// Returns `Err` if the daemon is not running, the call fails, or times out.
-fn verify_face(username: &str) -> Result<bool, Box<dyn std::error::Error>> {
+fn verify_face(username: &str, timeout_secs: u64) -> Result<bool, Box<dyn std::error::Error>> {
     let conn = zbus::blocking::connection::Builder::system()?
-        .method_timeout(std::time::Duration::from_secs(3))
+        .method_timeout(std::time::Duration::from_secs(timeout_secs))
         .build()?;
     let proxy = VisageProxyBlocking::new(&conn)?;
     let matched = proxy.verify(username)?;
@@ -201,11 +254,15 @@ fn verify_face(username: &str) -> Result<bool, Box<dyn std::error::Error>> {
 pub unsafe extern "C" fn pam_sm_authenticate(
     pamh: *mut libc::c_void,
     _flags: libc::c_int,
-    _argc: libc::c_int,
-    _argv: *const *const libc::c_char,
+    argc: libc::c_int,
+    argv: *const *const libc::c_char,
 ) -> libc::c_int {
     let result = panic::catch_unwind(|| {
         syslog_open();
+
+        // Parsed after syslog_open so a bad argument can be reported.
+        // SAFETY: PAM guarantees argv holds argc NUL-terminated strings.
+        let timeout_secs = unsafe { parse_timeout_secs(argc, argv) };
 
         // Extract username from PAM handle.
         let mut user_ptr: *const libc::c_char = ptr::null();
@@ -228,7 +285,7 @@ pub unsafe extern "C" fn pam_sm_authenticate(
         };
 
         // Call visaged over D-Bus.
-        match verify_face(username) {
+        match verify_face(username, timeout_secs) {
             Ok(true) => {
                 syslog_msg(LOG_INFO, &format!("face matched for user '{}'", username));
                 send_text_info(pamh, "Visage: face recognized");
@@ -303,7 +360,7 @@ mod tests {
         // This test will pass in any environment where visaged is not running,
         // including CI. If the daemon happens to be running, the test is skipped
         // to avoid a real camera capture during unit testing.
-        let result = verify_face("_pam_visage_unit_test_user_");
+        let result = verify_face("_pam_visage_unit_test_user_", DEFAULT_TIMEOUT_SECS);
         // If the daemon is running we get Ok(true/false); that's also fine —
         // the important property is no panic.
         match result {
@@ -316,13 +373,84 @@ mod tests {
                         || msg.contains("not provided")
                         || msg.contains("Failed to connect")
                         || msg.contains("no enrolled models")
-                        || msg.contains("unknown user"),
+                        || msg.contains("unknown user")
+                        // No system bus socket at all — the D-Bus client fails at
+                        // open() with ENOENT rather than reaching a name-resolution
+                        // error. This is the normal case in a hermetic build sandbox,
+                        // a container, or a chroot, where /run/dbus/system_bus_socket
+                        // does not exist. The list above only covered environments
+                        // where the bus is present but visaged is not on it, so this
+                        // test failed the whole build under `nix build` and would do
+                        // the same in any containerised CI.
+                        || msg.contains("No such file or directory"),
                     "unexpected error message: {msg}"
                 );
             }
             Ok(_) => {
                 // Daemon is running — acceptable, confirms no panic either way
             }
+        }
+    }
+
+    /// Build a C-style argv from Rust strings for the parser tests.
+    fn with_argv<T>(
+        args: &[&str],
+        f: impl FnOnce(libc::c_int, *const *const libc::c_char) -> T,
+    ) -> T {
+        let owned: Vec<std::ffi::CString> = args
+            .iter()
+            .map(|a| std::ffi::CString::new(*a).unwrap())
+            .collect();
+        let ptrs: Vec<*const libc::c_char> = owned.iter().map(|c| c.as_ptr()).collect();
+        f(ptrs.len() as libc::c_int, ptrs.as_ptr())
+    }
+
+    #[test]
+    fn timeout_defaults_when_absent() {
+        // No args at all, and args that simply do not mention timeout.
+        assert_eq!(
+            unsafe { parse_timeout_secs(0, std::ptr::null()) },
+            DEFAULT_TIMEOUT_SECS
+        );
+        with_argv(&["debug", "use_first_pass"], |argc, argv| {
+            assert_eq!(
+                unsafe { parse_timeout_secs(argc, argv) },
+                DEFAULT_TIMEOUT_SECS
+            );
+        });
+    }
+
+    #[test]
+    fn timeout_is_parsed_when_given() {
+        // The control for the test above: a valid argument MUST change the result,
+        // otherwise `timeout_defaults_when_absent` would pass on a parser that
+        // never reads anything at all.
+        with_argv(&["timeout=9"], |argc, argv| {
+            assert_eq!(unsafe { parse_timeout_secs(argc, argv) }, 9);
+        });
+        with_argv(&["debug", "timeout=12", "other"], |argc, argv| {
+            assert_eq!(unsafe { parse_timeout_secs(argc, argv) }, 12);
+        });
+    }
+
+    #[test]
+    fn malformed_timeout_falls_back_rather_than_failing() {
+        // A typo in a PAM line must never be able to lock a user out, so every
+        // one of these degrades to the default instead of erroring.
+        for bad in [
+            "timeout=",
+            "timeout=0",
+            "timeout=-1",
+            "timeout=abc",
+            "timeout=9999999999999999999999",
+        ] {
+            with_argv(&[bad], |argc, argv| {
+                assert_eq!(
+                    unsafe { parse_timeout_secs(argc, argv) },
+                    DEFAULT_TIMEOUT_SECS,
+                    "argument {bad:?} should fall back to the default"
+                );
+            });
         }
     }
 }

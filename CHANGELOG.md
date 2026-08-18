@@ -2,6 +2,186 @@
 
 ## Unreleased
 
+### Added
+
+- **`visage onboard` — one command from nothing to working face auth.** Downloads
+  the ONNX models, enrolls several labelled angles with a prompt between each, and
+  verifies against the daemon before claiming success. Replaces the `setup` →
+  `enroll` → `list` → test sequence, which had two traps: `enroll` defaulted to the
+  wrong user under sudo (below), and a single capture is fragile on hardware where
+  the IR emitter strobes or has no quirk entry.
+
+  It refuses to onboard `root` unless `--user root` is given explicitly, keeps
+  whichever captures succeeded if one fails, and exits non-zero if verification does
+  not recognise the enrolled face — so a failed onboarding cannot look like a
+  successful one.
+
+- **First hardware validation of passive liveness — and it did not discriminate.**
+  New hardware report for the ASUS Zenbook 14 UM3406HA / Shinetech `3277:0055` IR
+  module, executing the blocking §2 checklist in `docs/liveness-remaining-work.md`
+  that had been open since 2026-02-25.
+
+  A hand-held phone-screen spoof produced landmark displacement of **0.681 px** —
+  *higher* than two genuine live attempts (0.263, 0.670) — so no threshold on that
+  metric admits the live minimum while rejecting the spoof. The identity stage
+  matched the same photo at **0.9013**. Live users were falsely rejected 13–17% of
+  the time at the default 0.8 px floor — 20/23–20/24 live pass as of the journal at
+  2026-08-17 13:43 local, so the ≥9-in-10 reliability criterion is not met. `DEFAULT_MIN_EYE_DISPLACEMENT` is documented
+  against 640×480@30fps; this sensor is 640×360, and its "printed photo <0.3 px"
+  figure assumes a *rigidly mounted* photo rather than one held in a hand.
+
+  Sample is **n=1** on the spoof side, so `threat-model.md`'s "static photo" claim is
+  deliberately left unrevised. Do not lower `liveness.minDisplacement` on this
+  evidence — it would widen the hole rather than close it.
+
+  Also documented: this model ships **more than one camera module**, so the
+  `04f2:b6d9` quirk does not apply to `3277:0055` units, and a *missing* quirk does
+  not imply *missing illumination* — the emitter strobes by firmware default here.
+
+- **`pam_visage.so` now accepts a `timeout=N` module argument**, exposed as
+  `services.visage.pam.timeoutSeconds`. The D-Bus method timeout was hard-coded
+  at 3 seconds.
+
+  That is not only a hang guard — it is an upper bound on how long
+  authentication may take. A verify that exceeds it makes PAM fall through to
+  the password prompt, and the outcome is **indistinguishable from a failed
+  match**: both return `PAM_IGNORE`, and nothing in the PAM log says "timed
+  out". On CPU-only hardware a verify can legitimately take seconds; measured
+  median on an ASUS Zenbook 14 was **2273 ms**, leaving under 700 ms of
+  headroom against a 3-second ceiling. The symptom of getting that wrong is
+  intermittent password prompts that look exactly like recognition failures.
+
+  A malformed, zero, or unparseable value logs a warning and falls back to the
+  3-second default rather than failing — a typo in a PAM line must never be
+  able to lock a user out.
+
+- **Five daemon settings are now NixOS options** — `framesPerVerify`,
+  `framesPerEnroll`, `warmupFrames`, `verifyTimeoutSeconds`, and
+  `emitter.enable`. The daemon has always read the corresponding
+  `VISAGE_*` environment variables, but the module exposed none of them, so the
+  only way to tune a deployment was a hand-written systemd drop-in.
+
+  `framesPerVerify` is the main latency knob, and its documentation now records
+  both interactions that make it non-obvious: the PAM timeout above, and the
+  fact that passive liveness fails closed below two frames with a detected
+  face — so lowering it to 2 can reintroduce false rejects.
+
+- **The hardware quirks database is now tested.** `crates/visage-hw/src/quirks.rs` had no
+  tests, and `quirk_db()` skips a malformed TOML rather than panicking — correct for a daemon
+  that authenticates logins, but it means an embedded-but-broken quirk compiles, ships, and
+  silently never fires. At runtime that is indistinguishable from a camera with no quirk.
+
+  Four assertions now run in CI: every embedded source parses (count compared against
+  `QUIRK_SOURCES.len()`, so it cannot drift as cameras are added), every parsed quirk is
+  reachable via `lookup_quirk`, no two entries claim the same VID:PID, and emitter payloads are
+  coherent (non-empty `control_bytes`; `off_bytes` matching its length). Each was verified to
+  **fail** on a deliberately broken input, not merely to pass.
+
+  `contrib/hw/README.md` also gained the registration step it was missing. It previously went
+  from "create a TOML file" straight to "submit a PR", never mentioning that a file must be
+  added to `QUIRK_SOURCES` to be read at all — so a contributor following it literally would
+  ship a quirk that does nothing.
+
+### Changed
+
+- **`services.visage.pam.enable`'s description no longer overstates what it
+  wires.** It claimed face auth for "sudo, login, and screen lock"; it wires
+  `sudo` and `login` only. Screen lock is covered *indirectly* and only for
+  lockers that derive their PAM stack from `login` — DMS/quickshell generates a
+  config with an identical module set, and so inherits face auth for free.
+  Lockers declaring their own PAM service get nothing and must be wired
+  explicitly; the description now shows how, and warns that grepping
+  `/etc/pam.d/` alone will report the lock screen as unwired when it is not,
+  because a locker's config may live in the user's state directory.
+
+- **`visage onboard` no longer verifies the instant the last capture returns.**
+  It paused for zero milliseconds, so `[3/3]` fired while the user was still
+  holding the pose they struck to press Enter — the posture passive liveness is
+  most likely to reject, since it looks for landmark movement. Onboarding could
+  enroll perfectly and then fail its own verification for a reason unrelated to
+  enrollment quality. Now waits two seconds and says what to do with them.
+
+- **`visage onboard`'s failure message no longer asserts a cause it cannot
+  know.** It told users to check lighting and the IR emitter quirk. The daemon
+  deliberately collapses every failure into a plain non-match — distinguishing
+  "wrong face" from "identity matched but liveness rejected" would tell an
+  attacker holding a photograph that the photograph was recognised — so the CLI
+  genuinely does not know why a verify failed. It now says so, points at
+  `journalctl -u visaged`, and lists the causes in rough order of likelihood
+  with the liveness one first.
+
+### Fixed
+
+- **Nix package: `bindgen` could not find libclang.** `v4l2-sys-mit` (pulled in by
+  `visage-hw` for camera capture) runs `bindgen` in its build script, which dlopens
+  libclang. `packaging/nix/default.nix` declared only `pkg-config` in
+  `nativeBuildInputs`, so `nix build .#visage` failed with *"Unable to find libclang
+  … set the `LIBCLANG_PATH` environment variable"*. Added `rustPlatform.bindgenHook`.
+
+  `flake.nix` has carried `llvmPackages.libclang` + `LIBCLANG_PATH` for the devShell
+  since it was written, so `cargo build` in a dev shell always worked — the *package*
+  never did. Nothing caught the difference because no consumer referenced
+  `pkgs.visage`: `services.visage.enable` is set on no host and the package is in no
+  `systemPackages`, so the derivation was never realised and every build stayed green
+  for reasons unrelated to it.
+
+- **Nix package: version label was three patch releases stale.** The derivation
+  hardcoded `version = "0.3.3"` while `[workspace.package]` was at `0.3.6`, so any
+  built artifact carried a wrong externally-visible version. Now read from
+  `Cargo.toml` so the two cannot drift.
+
+- **Nix package: ONNX Runtime is now fetched hermetically.** `ort-sys` downloads a
+  prebuilt runtime from `cdn.pyke.io` in its build script, which a sandboxed build
+  correctly blocks — so `nix build .#visage` could never work offline. Pointing
+  `ORT_LIB_LOCATION` at nixpkgs' `onnxruntime` does not help either: `ort` links
+  **statically** by default and nixpkgs ships only `.so`, giving *"could not link to
+  the ONNX Runtime build in …"*.
+
+  Now the same archive `ort-sys` wants is fetched via `fetchurl` with a pinned hash
+  and unpacked into a small derivation that `ORT_LIB_LOCATION` points at.
+  Version-matched by construction (1.23.2, what `ort 2.0.0-rc.11` expects), so no
+  version skew, and reproducible.
+
+  The archive is **raw LZMA2, not an `.xz` container**, and needs
+  `xz --format=raw --lzma2=dict=64MiB`. The 64 MiB dictionary is required and is not
+  the default: plain `--lzma2` decodes only ~8.9 MB of the ~93 MB payload and exits
+  non-zero, which — piped into `tar` — looks like a clean extraction, because a
+  truncated `ar` archive still yields a plausible `libonnxruntime.a`. A size floor
+  now refuses any decode under 80 MB.
+
+- **Nix package: PAM module path no longer hardcoded.** `postInstall` looked for
+  `target/release/libpam_visage.so`, but current `rustPlatform.buildRustPackage`
+  passes `--target`, so cargo emits to `target/<triple>/release/`. It is now located
+  at install time and the build fails loudly if it is absent or ambiguous — which it
+  was, three times over: `release/deps/`, `release-tmp/`, and the real one.
+
+- **`clippy::excessive_precision` on two pre-existing test literals**, newly flagged
+  by a more recent clippy and failing `cargo clippy -- -D warnings`. In
+  `alignment.rs` the value carried a trailing zero and was trimmed. In `store.rs` the
+  excess precision is deliberate — that test asserts a bit-exact f32 round-trip — so
+  it is annotated with a justified `#[allow]` rather than truncated, which would have
+  quietly weakened the case it exists to test.
+
+- **`--user` defaulted to `root` under `sudo`, silently enrolling the wrong account.**
+  Every privileged subcommand is root-only by the D-Bus policy, so they are always
+  run as `sudo visage …` — where `$USER` is `root`. `sudo visage enroll --label x`
+  therefore registered the face against **root** while PAM went on looking up the
+  real user, found nothing, and fell through to the password prompt.
+
+  The failure was silent in the worst way: enrollment printed *"Enrolled
+  successfully"*, `sudo` kept asking for a password, and nothing indicated the two
+  were about different users. It also left a face credential attached to the most
+  privileged account on the machine, created by accident.
+
+  `current_user()` now prefers `SUDO_USER`, falling back to `$USER` when not under
+  sudo. The help text on `enroll`, `verify`, `list` and `remove` said "defaults to
+  `$USER`" and has been corrected too.
+
+### Notes
+
+- `nix build .#visage` now succeeds end-to-end: compile, unit tests, and install of
+  the daemon, CLI, PAM module, D-Bus policy and both systemd units.
+
 ## v0.3.6 — 2026-07-07
 
 Security hardening batch — defense-in-depth on the D-Bus authorization surface,

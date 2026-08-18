@@ -38,6 +38,36 @@ The `control_bytes` values are found via `linux-enable-ir-emitter configure` or 
 1. Run `visage discover` to detect your camera's VID:PID and check for existing quirk support
 2. If no quirk exists, use `linux-enable-ir-emitter configure` to find the control bytes
 3. Create a TOML file named `{vid}-{pid}.toml` (e.g. `04f2-b6d9.toml`) following the format above
-4. Submit a PR
+4. **Register it in `crates/visage-hw/src/quirks.rs`** — two lines, and the step that is easy
+   to miss:
 
-The quirk file is embedded at compile time via `include_str!` — no runtime file loading required.
+   ```rust
+   const QUIRK_04F2_B6D0: &str = include_str!("../../../contrib/hw/04f2-b6d0.toml");
+   //  …then add it to QUIRK_SOURCES:
+   ("04f2-b6d0.toml", QUIRK_04F2_B6D0),
+   ```
+
+5. Run `cargo test -p visage-hw quirks::` and submit a PR
+
+Quirk files are embedded at compile time via `include_str!` — there is no runtime file loading,
+so **dropping a `.toml` into this directory does nothing on its own.** A file that is not
+registered in `QUIRK_SOURCES` is never read.
+
+### Why step 4 has tests behind it
+
+`quirk_db()` skips a malformed TOML rather than panicking — the daemon authenticates logins, and
+one bad contributed quirk must not stop it starting. The cost is that at runtime a camera with a
+broken quirk is **indistinguishable from a camera with no quirk**: no error, no crash, the
+emitter simply never fires.
+
+`crates/visage-hw/src/quirks.rs` therefore asserts, in CI:
+
+| Test | Catches |
+|---|---|
+| `quirk_sources_all_parse` | an entry that is embedded but malformed, and was silently dropped |
+| `every_quirk_is_reachable_by_lookup` | an entry that parses but `lookup_quirk` cannot find |
+| `no_duplicate_vid_pid` | two entries claiming one device, where listing order silently decides |
+| `emitter_payloads_are_coherent` | empty `control_bytes`, or `off_bytes` of a mismatched length |
+
+The parse count is compared against `QUIRK_SOURCES.len()` rather than a hard-coded number, so
+the assertion cannot drift as cameras are added.

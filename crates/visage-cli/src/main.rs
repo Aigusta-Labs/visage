@@ -32,19 +32,19 @@ enum Commands {
         #[arg(short, long)]
         label: String,
 
-        /// User to enroll for (defaults to $USER)
+        /// User to enroll for. Defaults to the invoking user — SUDO_USER under sudo, NOT root.
         #[arg(short, long)]
         user: Option<String>,
     },
     /// Verify your face against enrolled models
     Verify {
-        /// User to verify as (defaults to $USER)
+        /// User to verify as. Defaults to the invoking user — SUDO_USER under sudo, NOT root.
         #[arg(short, long)]
         user: Option<String>,
     },
     /// List enrolled face models
     List {
-        /// User whose models to list (defaults to $USER)
+        /// User whose models to list. Defaults to the invoking user — SUDO_USER under sudo, NOT root.
         #[arg(short, long)]
         user: Option<String>,
     },
@@ -53,9 +53,36 @@ enum Commands {
         /// Model ID to remove
         id: String,
 
-        /// User who owns the model (defaults to $USER)
+        /// User who owns the model. Defaults to the invoking user — SUDO_USER under sudo, NOT root.
         #[arg(short, long)]
         user: Option<String>,
+    },
+    /// One command: download models, enroll several angles, and verify.
+    ///
+    /// This is the path most people want. Running `setup` then a bare `enroll`
+    /// leaves two traps: enroll defaults to `$USER` (which is `root` under the
+    /// sudo these commands require), and a single capture is fragile on
+    /// hardware where the IR emitter strobes or has no quirk.
+    Onboard {
+        /// User to enroll for. Defaults to the invoking user (SUDO_USER).
+        #[arg(short, long)]
+        user: Option<String>,
+
+        /// Comma-separated capture labels, one prompt per label.
+        #[arg(
+            long,
+            value_delimiter = ',',
+            default_value = "normal,left,right,glasses"
+        )]
+        labels: Vec<String>,
+
+        /// Model directory override, passed through to setup.
+        #[arg(long)]
+        model_dir: Option<String>,
+
+        /// Skip the interactive prompt between captures.
+        #[arg(long)]
+        no_prompt: bool,
     },
     /// Download ONNX models required for face detection and recognition
     Setup {
@@ -79,8 +106,27 @@ enum Commands {
     },
 }
 
+/// The human who invoked us — NOT `root` when running under `sudo`.
+///
+/// Every privileged subcommand (enroll, remove, list) is root-only by the D-Bus
+/// policy, so in practice they are always run as `sudo visage …`. Reading plain
+/// `$USER` there yields `root`, so `sudo visage enroll --label normal` enrolled
+/// the face against **root** while PAM went on looking up the real user, found
+/// nothing, and fell through to the password prompt.
+///
+/// That failure is silent in the worst way: enrollment prints "Enrolled
+/// successfully", `sudo` keeps asking for a password, and nothing anywhere says
+/// the two are about different users. It also leaves a face credential attached
+/// to the most privileged account on the machine, created by accident.
+///
+/// `SUDO_USER` is what sudo itself records about the invoker, so prefer it and
+/// fall back to `$USER` when not under sudo. Pass `--user` to override.
 fn current_user() -> String {
-    std::env::var("USER").unwrap_or_else(|_| "unknown".to_string())
+    std::env::var("SUDO_USER")
+        .ok()
+        .filter(|u| !u.is_empty() && u != "root")
+        .or_else(|| std::env::var("USER").ok())
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 fn verify_timeout_secs() -> u64 {
@@ -187,6 +233,128 @@ async fn main() -> Result<()> {
                 }
                 Err(e) => {
                     eprintln!("Failed to remove model: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        Commands::Onboard {
+            user,
+            labels,
+            model_dir,
+            no_prompt,
+        } => {
+            let user = user.unwrap_or_else(current_user);
+            if user == "root" {
+                eprintln!(
+                    "Refusing to onboard 'root'. Face auth for root is almost never what you\n\
+                     want, and it is the exact mistake this command exists to prevent.\n\
+                     Pass --user <name> explicitly if you really mean it."
+                );
+                std::process::exit(1);
+            }
+            if labels.is_empty() {
+                eprintln!("No labels given — nothing to enroll.");
+                std::process::exit(1);
+            }
+
+            println!("Onboarding face authentication for user '{user}'.\n");
+
+            // 1. Models. setup::run is idempotent — it reports what is already present.
+            println!("[1/3] ONNX models");
+            setup::run(model_dir)?;
+            println!();
+
+            // 2. Captures. visaged self-heals within its restart interval once the
+            //    models land, so connect AFTER setup rather than before.
+            println!("[2/3] Face captures ({} to take)", labels.len());
+            let proxy = connect_proxy().await?;
+            let mut enrolled: Vec<(String, String)> = Vec::new();
+            for (i, label) in labels.iter().enumerate() {
+                if !no_prompt {
+                    println!(
+                        "\n  ({}/{}) '{}' — look at the camera{}, then press Enter.",
+                        i + 1,
+                        labels.len(),
+                        label,
+                        match label.as_str() {
+                            "left" => " and turn your head slightly LEFT",
+                            "right" => " and turn your head slightly RIGHT",
+                            "glasses" => " wearing your glasses (skip with Ctrl-C if none)",
+                            _ => " straight on",
+                        }
+                    );
+                    let mut _l = String::new();
+                    let _ = std::io::stdin().read_line(&mut _l);
+                }
+                match proxy.enroll(&user, label).await {
+                    Ok(id) => {
+                        println!("  ✓ {label}: {id}");
+                        enrolled.push((label.clone(), id));
+                    }
+                    // One bad capture should not discard the ones that worked.
+                    Err(e) => eprintln!("  ✗ {label}: {e}"),
+                }
+            }
+            if enrolled.is_empty() {
+                eprintln!("\nNo models enrolled — not going to claim this worked.");
+                std::process::exit(1);
+            }
+
+            // 3. Prove it against the daemon rather than trusting the enroll return.
+            //
+            // Pause first. Without it this fires within a millisecond of the last
+            // capture returning, while the user is still holding the pose they
+            // struck to press Enter — which is the posture passive liveness is
+            // most likely to reject, since it looks for landmark movement. The
+            // result was an onboarding that enrolled perfectly and then failed
+            // its own verification for a reason that had nothing to do with
+            // enrollment quality.
+            println!("\n[3/3] Verifying — look at the camera and behave normally.");
+            if !no_prompt {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+            match proxy.verify(&user).await {
+                Ok(true) => {
+                    println!("  ✓ recognised '{user}' from {} model(s)", enrolled.len());
+                    println!(
+                        "\nDone. Test the real path with:  sudo -k && sudo true\n\
+                         Password remains available as a fallback on every PAM service."
+                    );
+                }
+                Ok(false) => {
+                    println!("  ✗ enrolled, but verification did not recognise you.");
+                    println!(
+                        "\n{} model(s) are stored, so enrollment itself worked — this is the\n\
+                         verify step.",
+                        enrolled.len()
+                    );
+                    // Deliberately does NOT assert a cause. The daemon collapses
+                    // every failure into a plain non-match so that a caller cannot
+                    // distinguish "wrong face" from "identity matched but liveness
+                    // rejected" — that distinction would tell an attacker holding a
+                    // photograph that the photograph was recognised. The CLI
+                    // therefore genuinely does not know why this failed, and
+                    // guessing sends people to the wrong subsystem.
+                    println!(
+                        "\nThe daemon does not report WHY a verify failed (distinguishing a\n\
+                         wrong face from a rejected-but-matching one would leak information),\n\
+                         so read its log for the actual reason:\n\
+                         \n    journalctl -u visaged -n 20\n\
+                         \nWhat that log will usually show, in rough order of likelihood:\n\
+                         \n  * 'liveness rejected a face that matched identity' — you were\n\
+                         recognised and the anti-spoof gate vetoed it. Tune it with\n\
+                         services.visage.liveness.minDisplacement; its default is\n\
+                         calibrated for a 640x480 30fps sensor and does not fit every\n\
+                         camera.\n\
+                         \n  * 'no face detected in any captured frame' — out of frame,\n\
+                         looking away, or too dark.\n\
+                         \n  * a low similarity score — genuinely not recognised. Re-run to\n\
+                         add more angles."
+                    );
+                    std::process::exit(1);
+                }
+                Err(e) => {
+                    eprintln!("  ✗ verification call failed: {e}");
                     std::process::exit(1);
                 }
             }

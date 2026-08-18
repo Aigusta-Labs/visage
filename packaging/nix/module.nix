@@ -22,6 +22,13 @@
 
 let
   cfg = config.services.visage;
+
+  # Module arguments shared by every PAM rule Visage installs. `settings` is
+  # preferred over `args` because NixOS renders it into the same module-argument
+  # list while leaving each entry individually overridable by the consumer.
+  pamSettings = lib.optionalAttrs (cfg.pam.timeoutSeconds != null) {
+    timeout = cfg.pam.timeoutSeconds;
+  };
   visagePkg = pkgs.callPackage ./default.nix { };
 in
 {
@@ -73,6 +80,88 @@ in
       '';
     };
 
+    framesPerVerify = lib.mkOption {
+      type = lib.types.nullOr lib.types.ints.positive;
+      default = null;
+      example = 2;
+      description = ''
+        Number of frames captured and scored per verification. When null, the
+        daemon uses its compiled default (3).
+
+        This is the main latency knob: each frame costs one SCRFD detection
+        plus one ArcFace embedding, which dominates verification time on
+        CPU-only hardware. Lowering it speeds up every `sudo` and every screen
+        unlock.
+
+        Two interactions to weigh before lowering it:
+
+        - `pam-visage` applies a hard 3-second D-Bus timeout. If verification
+          exceeds that, PAM falls through to the password prompt, and the
+          result is indistinguishable from a failed match. Measure your
+          verification latency before assuming you have headroom.
+        - Passive liveness needs at least two frames in which a face was
+          detected, and fails closed below that. At `framesPerVerify = 2`, a
+          single frame that misses detection leaves one landmark frame and the
+          attempt is rejected. Leave liveness disabled, or keep three frames,
+          if that trade is not acceptable.
+      '';
+    };
+
+    framesPerEnroll = lib.mkOption {
+      type = lib.types.nullOr lib.types.ints.positive;
+      default = null;
+      example = 5;
+      description = ''
+        Number of frames captured per enrollment. The highest-confidence face
+        across these frames is the one embedded. When null, the daemon uses
+        its compiled default (5).
+      '';
+    };
+
+    warmupFrames = lib.mkOption {
+      type = lib.types.nullOr lib.types.ints.unsigned;
+      default = null;
+      example = 4;
+      description = ''
+        Frames discarded at engine startup so the camera's auto-exposure and
+        auto-gain can stabilise. When null, the daemon uses its compiled
+        default (4).
+
+        This cost is paid once when the daemon opens the camera, not per
+        verification, so raising it does not slow down authentication.
+      '';
+    };
+
+    verifyTimeoutSeconds = lib.mkOption {
+      type = lib.types.nullOr lib.types.ints.positive;
+      default = null;
+      example = 10;
+      description = ''
+        Deadline for a single verification inside the daemon. When null, the
+        daemon uses its compiled default (10).
+
+        Note this is the *daemon-side* bound. `pam-visage` independently
+        applies a 3-second D-Bus method timeout, so raising this above 3 has
+        no effect on the PAM path — PAM gives up first and falls back to the
+        password.
+      '';
+    };
+
+    emitter.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Whether to drive the camera's IR emitter via its UVC extension unit,
+        for cameras with a matching quirk in `contrib/hw/`.
+
+        Disabling this does not necessarily mean the sensor goes dark: some
+        modules enable IR illumination in firmware and strobe it regardless of
+        any quirk. Check the per-frame brightness sequence
+        (`visage test -n 20`) rather than assuming — a dark-frame *count*
+        cannot distinguish a strobing emitter from an exposure ramp.
+      '';
+    };
+
     liveness.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
@@ -94,13 +183,57 @@ in
       '';
     };
 
+    pam.timeoutSeconds = lib.mkOption {
+      type = lib.types.nullOr lib.types.ints.positive;
+      default = null;
+      example = 6;
+      description = ''
+        D-Bus method timeout applied by `pam_visage.so`, in seconds. When
+        null, the module's compiled default (3) is used.
+
+        This is an upper bound on how long authentication may take, not only a
+        hang guard: if verification exceeds it, PAM falls through to the
+        password prompt and the outcome is **indistinguishable from a failed
+        match** — both return `PAM_IGNORE`, and nothing in the PAM log says
+        "timed out".
+
+        On CPU-only hardware a verify can take seconds. Measure yours before
+        assuming the default fits; if median latency is anywhere near 3s, the
+        result is intermittent password prompts that look like recognition
+        failures. Raising this trades a longer worst-case hang, when the daemon
+        is genuinely stuck, for not being cut off mid-verification.
+      '';
+    };
+
     pam.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
       description = ''
         Whether to enable Visage PAM integration. When enabled, face
-        authentication is tried before password for sudo, login, and
-        screen lock. Password is always available as fallback.
+        authentication is tried before password for `sudo` and `login`, with
+        the password always available as fallback.
+
+        Screen lock is covered only *indirectly*, and whether it works depends
+        on your locker:
+
+        - Lockers that derive their PAM stack from `login` — DMS/quickshell
+          generates a config with an identical module set — inherit face auth
+          with no extra configuration.
+        - Lockers that declare their own PAM service get nothing from this
+          option and must be wired explicitly:
+
+          ```nix
+          security.pam.services.<service>.rules.auth.visage = {
+            order = 900;
+            control = "[success=done default=ignore]";
+            modulePath = "${cfg.package}/lib/security/pam_visage.so";
+          };
+          ```
+
+        Do not audit this by grepping `/etc/pam.d/` alone — a locker's config
+        may live in the user's state directory instead. The running service
+        name is in the journal:
+        `journalctl | grep 'Starting pam session' | tail -1`.
       '';
     };
   };
@@ -138,6 +271,16 @@ in
         VISAGE_LIVENESS_ENABLED = "0";
       } // lib.optionalAttrs (cfg.liveness.minDisplacement != null) {
         VISAGE_LIVENESS_MIN_DISPLACEMENT = toString cfg.liveness.minDisplacement;
+      } // lib.optionalAttrs (cfg.framesPerVerify != null) {
+        VISAGE_FRAMES_PER_VERIFY = toString cfg.framesPerVerify;
+      } // lib.optionalAttrs (cfg.framesPerEnroll != null) {
+        VISAGE_FRAMES_PER_ENROLL = toString cfg.framesPerEnroll;
+      } // lib.optionalAttrs (cfg.warmupFrames != null) {
+        VISAGE_WARMUP_FRAMES = toString cfg.warmupFrames;
+      } // lib.optionalAttrs (cfg.verifyTimeoutSeconds != null) {
+        VISAGE_VERIFY_TIMEOUT_SECS = toString cfg.verifyTimeoutSeconds;
+      } // lib.optionalAttrs (!cfg.emitter.enable) {
+        VISAGE_EMITTER_ENABLED = "0";
       };
 
       serviceConfig = {
@@ -186,11 +329,13 @@ in
         order = 900;
         control = "[success=done default=ignore]";
         modulePath = "${cfg.package}/lib/security/pam_visage.so";
+        settings = pamSettings;
       };
       login.rules.auth.visage = {
         order = 900;
         control = "[success=done default=ignore]";
         modulePath = "${cfg.package}/lib/security/pam_visage.so";
+        settings = pamSettings;
       };
       # Screen lockers (swaylock, hyprlock, etc.) use their own PAM service.
       # Users can add more via:

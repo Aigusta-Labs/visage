@@ -56,19 +56,32 @@ pub struct EmitterInfo {
 /// Public alias used by `IrEmitter`.
 pub type CameraQuirk = QuirkFile;
 
+/// Every embedded quirk source, paired with its filename for diagnostics.
+///
+/// Adding a camera means adding an `include_str!` const above and one entry
+/// here. `quirk_sources_all_parse` compares this list's length against the
+/// number that actually parsed, so a contribution that is embedded but
+/// malformed fails CI instead of shipping inert.
+const QUIRK_SOURCES: &[(&str, &str)] = &[
+    ("04f2-b6d9.toml", QUIRK_04F2_B6D9),
+    ("04f2-b6d0.toml", QUIRK_04F2_B6D0),
+    ("174f-2454.toml", QUIRK_174F_2454),
+    ("30c9-00c2.toml", QUIRK_30C9_00C2),
+    ("30c9-0120.toml", QUIRK_30C9_0120),
+];
+
 fn quirk_db() -> &'static Vec<QuirkFile> {
     QUIRK_DB.get_or_init(|| {
         let mut db = Vec::new();
-        for src in [
-            QUIRK_04F2_B6D9,
-            QUIRK_04F2_B6D0,
-            QUIRK_174F_2454,
-            QUIRK_30C9_00C2,
-            QUIRK_30C9_0120,
-        ] {
+        for (file, src) in QUIRK_SOURCES {
             match toml::from_str::<QuirkFile>(src) {
                 Ok(q) => db.push(q),
-                Err(e) => eprintln!("visage-hw: bad quirk TOML: {e}"),
+                // Deliberately does NOT panic. This runs inside a daemon that
+                // authenticates logins; one bad contributed quirk must not stop
+                // it starting. The cost is that a malformed entry is invisible
+                // at runtime — a camera with a broken quirk looks exactly like a
+                // camera with no quirk. The tests below are what make it visible.
+                Err(e) => eprintln!("visage-hw: bad quirk TOML in {file}: {e}"),
             }
         }
         db
@@ -129,4 +142,80 @@ pub fn get_usb_ids(device_path: &str) -> Option<(u16, u16)> {
     let vid = u16::from_str_radix(vid_str.trim(), 16).ok()?;
     let pid = u16::from_str_radix(pid_str.trim(), 16).ok()?;
     Some((vid, pid))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The guard this module exists for.
+    ///
+    /// `quirk_db()` skips a malformed TOML rather than panicking, so an
+    /// embedded-but-broken contribution compiles, ships, and silently never
+    /// fires — indistinguishable at runtime from a camera that simply has no
+    /// quirk. Comparing parsed count against source count is what turns that
+    /// into a CI failure. Deriving the expected number from `QUIRK_SOURCES`
+    /// rather than hard-coding it means the assertion cannot drift as cameras
+    /// are added.
+    #[test]
+    fn quirk_sources_all_parse() {
+        let parsed = quirk_db().len();
+        assert_eq!(
+            parsed,
+            QUIRK_SOURCES.len(),
+            "{} of {} embedded quirk files failed to parse and were silently dropped \
+             (stderr names which)",
+            QUIRK_SOURCES.len() - parsed,
+            QUIRK_SOURCES.len()
+        );
+    }
+
+    /// Parsing is not enough — a quirk nothing can look up is still inert.
+    #[test]
+    fn every_quirk_is_reachable_by_lookup() {
+        for q in quirk_db() {
+            let (vid, pid) = (q.device.vendor_id, q.device.product_id);
+            let found = lookup_quirk(vid, pid)
+                .unwrap_or_else(|| panic!("{vid:04X}:{pid:04X} parsed but lookup_quirk missed it"));
+            assert_eq!(found.device.name, q.device.name);
+        }
+    }
+
+    /// Two entries claiming one device makes `lookup_quirk` order-dependent,
+    /// so whichever is listed first silently wins.
+    #[test]
+    fn no_duplicate_vid_pid() {
+        let mut seen = std::collections::HashSet::new();
+        for q in quirk_db() {
+            let key = (q.device.vendor_id, q.device.product_id);
+            assert!(
+                seen.insert(key),
+                "duplicate quirk for {:04X}:{:04X} ({})",
+                key.0,
+                key.1,
+                q.device.name
+            );
+        }
+    }
+
+    /// An empty payload writes nothing to the extension unit, and an `off_bytes`
+    /// of a different length cannot deactivate what `control_bytes` activated.
+    /// Both parse cleanly, so only an assertion catches them.
+    #[test]
+    fn emitter_payloads_are_coherent() {
+        for q in quirk_db() {
+            let n = &q.device.name;
+            assert!(
+                !q.emitter.control_bytes.is_empty(),
+                "{n}: empty control_bytes"
+            );
+            if let Some(off) = &q.emitter.off_bytes {
+                assert_eq!(
+                    off.len(),
+                    q.emitter.control_bytes.len(),
+                    "{n}: off_bytes length differs from control_bytes"
+                );
+            }
+        }
+    }
 }
