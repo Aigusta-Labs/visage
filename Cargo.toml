@@ -14,7 +14,12 @@ version = "0.4.0-rc.1"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/sovren-software/visage"
-rust-version = "1.75"
+# Measured 2026-08-24, not guessed: `ort` and `image` both declare 1.88, and 59
+# packages in the resolved graph require > 1.75. The previous value of 1.75 was
+# not stale — it was false. The crate could not build on it, and anyone who
+# trusted the field got a failure deep inside a dependency instead of a clear
+# "your toolchain is too old". The `msrv` CI job now verifies this.
+rust-version = "1.88"
 
 [workspace.dependencies]
 # Async runtime

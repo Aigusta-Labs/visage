@@ -52,7 +52,10 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy
-        run: cargo clippy --workspace -- -D warnings
+        # --all-targets so integration tests under crates/*/tests/ are linted
+        # too. Without it the five contract tests added in #91 are invisible
+        # to CI even though they are clean locally.
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Build
         run: cargo build --release --workspace
@@ -99,7 +102,11 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install cargo-deb
-        run: cargo install cargo-deb
+        # Pinned. This tool produces the SHIPPED artifact, and an unpinned
+        # `cargo install` is the same drift class that took CI down for six
+        # days on 2026-08-24 (see rust-toolchain.toml). It happened to resolve
+        # to the same version locally and in CI that day — by luck, not design.
+        run: cargo install cargo-deb --version 3.7.0 --locked
 
       - name: Build release
         run: cargo build --release --workspace
@@ -220,4 +227,49 @@ jobs:
         run: cargo clippy --version
 
       - name: Clippy on current stable
-        run: cargo clippy --workspace -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  msrv:
+    # Verifies the MSRV we PUBLISH is true.
+    #
+    # `Cargo.toml` declared rust-version = "1.75" until 2026-08-24. That was not
+    # stale, it was false: `ort` and `image` both require 1.88, and 59 packages
+    # in the resolved graph require more than 1.75. The crate could not build on
+    # the version it advertised, and anyone who trusted the field got a failure
+    # deep inside a dependency rather than a clear "your toolchain is too old".
+    #
+    # Nothing checked it. That is the fifth instance in this repository of a
+    # claim in one artifact that nothing in another artifact enforces — see also
+    # the release trigger (#75), the network-isolation claim (#78), and
+    # TimeoutStopSec. This job closes it for the MSRV.
+    #
+    # The version is read from Cargo.toml, so the manifest stays the single
+    # source of truth and this job cannot drift from it.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libpam0g-dev libdbus-1-dev
+
+      - name: Read the declared MSRV
+        id: msrv
+        run: |
+          set -euo pipefail
+          msrv="$(grep '^rust-version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')"
+          # Refuse rather than hand the action an empty string it would resolve
+          # to something else — the same failure shape as the release trigger.
+          if [ -z "$msrv" ]; then
+            echo "::error::no rust-version found in Cargo.toml — nothing to verify"
+            exit 1
+          fi
+          echo "verifying the published MSRV: ${msrv}"
+          echo "version=${msrv}" >> "$GITHUB_OUTPUT"
+
+      - name: Install the declared MSRV toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
+
+      - name: Build at the declared MSRV
+        run: cargo check --workspace --all-targets --locked
