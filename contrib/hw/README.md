@@ -47,7 +47,16 @@ The `control_bytes` values are found via `linux-enable-ir-emitter configure` or 
    ("04f2-b6d0.toml", QUIRK_04F2_B6D0),
    ```
 
-5. Run `cargo test -p visage-hw quirks::` and submit a PR
+5. **Verify the quirk is doing the work, not another tool.** Disable any external emitter
+   activation tool (`linux-enable-ir-emitter` and similar) and **power-cycle the laptop or the
+   camera** to clear residual control bytes, then test. A camera left illuminated by something
+   else will make a non-working quirk look correct, and the contribution ships inert.
+
+   This is a real negative control, and it is what made [#76](https://github.com/sovren-software/visage/pull/76)
+   trustworthy — @rampa3 did exactly this before submitting, then suggested documenting it
+   ([#85](https://github.com/sovren-software/visage/issues/85)).
+
+6. Run `cargo test -p visage-hw quirks::` and submit a PR
 
 Quirk files are embedded at compile time via `include_str!` — there is no runtime file loading,
 so **dropping a `.toml` into this directory does nothing on its own.** A file that is not
