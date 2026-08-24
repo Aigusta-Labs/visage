@@ -62,12 +62,20 @@ The packaging step added systemic hardening beyond the core auth logic:
 | `PrivateTmp=true` | Isolated `/tmp` — prevents `/tmp` race attacks |
 | `CapabilityBoundingSet=` (empty) | All Linux capabilities dropped — root with no capabilities |
 | `DeviceAllow=char-video4linux rw` | Camera access is the only device permission |
+| `PrivateNetwork=true` | Own network namespace, loopback only — the daemon cannot reach the network |
 | `MemoryDenyWriteExecute=false` | Intentionally disabled — ONNX Runtime requires W+X for JIT |
 
 The `MemoryDenyWriteExecute=false` exception is the most significant hardening gap. It allows
 the daemon to map writable+executable memory pages, which ONNX Runtime requires for its CPU
-execution provider JIT compilation. Mitigations: the daemon has no network access, no inbound
-connections, and is further sandboxed by all other directives.
+execution provider JIT compilation. Mitigations: the daemon has no network access — enforced by
+`PrivateNetwork=true`, which places it in its own network namespace with loopback only — and it
+is further sandboxed by all other directives.
+
+Until v0.4 that network claim was an assertion with nothing behind it: no unit directive
+enforced isolation, so the compensating control this exception is justified by did not exist.
+Reported as issue #78 and now enforced. The daemon makes no network calls of its own; the only
+HTTP client in the workspace is `ureq`, used solely by `visage-cli` for `visage setup` model
+downloads, which runs as a separate process and is unaffected.
 
 ### D-Bus Policy
 
@@ -119,7 +127,9 @@ require structured journal fields (sd_journal_send) rather than plain syslog —
    caller UNIX UID against the target username, but it does not yet use
    `GetConnectionCredentials`.
 
-3. **Root daemon with W+X pages.** `MemoryDenyWriteExecute=false` weakens sandbox.
+3. **Root daemon with W+X pages.** `MemoryDenyWriteExecute=false` weakens sandbox. The
+   compensating control is `PrivateNetwork=true` (added in v0.4; see issue #78), which denies
+   the daemon any route off the host.
 
 4. **Passive liveness threshold is tunable.** `VISAGE_LIVENESS_MIN_DISPLACEMENT` defaults
    to 0.8 px. Cameras with very low frame rates or high sensor noise may require adjustment.

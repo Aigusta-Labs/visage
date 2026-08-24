@@ -177,6 +177,23 @@
   sudo. The help text on `enroll`, `verify`, `list` and `remove` said "defaults to
   `$USER`" and has been corrected too.
 
+### Security
+
+- **The daemon's network isolation is now enforced, not merely asserted.**
+  `threat-model.md` justifies its largest documented hardening gap —
+  `MemoryDenyWriteExecute=false`, required by ONNX Runtime's JIT — by stating
+  that the daemon "has no network access, no inbound connections". No unit
+  directive enforced that, so the compensating control for that exception did
+  not exist. Reported as issue #78.
+
+  `visaged.service` now sets `PrivateNetwork=true` in both the packaged unit
+  and the NixOS module, placing the daemon in its own network namespace with
+  loopback only. `visaged` makes no network calls of its own; the only HTTP
+  client in the workspace is `ureq`, used solely by `visage-cli` for `visage
+  setup` model downloads, which runs as a separate process and is unaffected.
+  D-Bus is an AF_UNIX filesystem socket and is not namespaced by
+  `PrivateNetwork`.
+
 ### Notes
 
 - `nix build .#visage` now succeeds end-to-end: compile, unit tests, and install of
