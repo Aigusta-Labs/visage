@@ -177,6 +177,28 @@
   sudo. The help text on `enroll`, `verify`, `list` and `remove` said "defaults to
   `$USER`" and has been corrected too.
 
+### Developer experience
+
+- **Releases are cut from tags again, and cannot publish empty.** v0.3.4, v0.3.5
+  and v0.3.6 shipped with no `.deb` attached (issue #75). The release job gated
+  on the head commit message starting with `release:`, and adopting Conventional
+  Commits (`chore(release): 0.3.4`) silently severed it — nothing failed,
+  because each release was then created by hand and looked correct. The job is
+  now triggered by a `v*` tag, asserts the tag matches `Cargo.toml`, attaches
+  only that version's changelog section rather than the whole file, derives
+  pre-release status from the version string, and refuses to publish at all if
+  no `.deb` is present.
+
+- **The toolchain is pinned, so CI cannot change behaviour without a commit.**
+  The identical commit passed CI on 2026-08-18 and failed on 2026-08-24, purely
+  because `dtolnay/rust-toolchain@stable` floated onto a compiler whose clippy
+  added a new lint; with `-D warnings` that halted every merge in the repository
+  for six days. `rust-toolchain.toml` now pins the version — tracking what
+  `nix develop` provides, so a local `cargo clippy` reproduces CI exactly — and
+  the workflow reads it as the single source of truth. A new non-blocking
+  `clippy-latest` job still runs against current stable, so new lints surface
+  early without being able to block a merge.
+
 ### Security
 
 - **The daemon's network isolation is now enforced, not merely asserted.**

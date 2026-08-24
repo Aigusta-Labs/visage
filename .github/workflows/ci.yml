@@ -19,8 +19,25 @@ jobs:
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libpam0g-dev libdbus-1-dev
 
+      - name: Read the pinned toolchain
+        id: rust
+        run: |
+          set -euo pipefail
+          channel="$(grep '^channel' rust-toolchain.toml | sed 's/.*"\(.*\)"/\1/')"
+          # Refuse rather than hand the action an empty string, which it would
+          # silently resolve to something else.
+          if [ -z "$channel" ]; then
+            echo "::error::no channel found in rust-toolchain.toml"
+            exit 1
+          fi
+          echo "using pinned toolchain: ${channel}"
+          echo "channel=${channel}" >> "$GITHUB_OUTPUT"
+
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.rust.outputs.channel }}
+          components: clippy, rustfmt
 
       - name: Cache cargo registry and build
         uses: actions/cache@v6
@@ -52,8 +69,25 @@ jobs:
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libpam0g-dev libdbus-1-dev
 
+      - name: Read the pinned toolchain
+        id: rust
+        run: |
+          set -euo pipefail
+          channel="$(grep '^channel' rust-toolchain.toml | sed 's/.*"\(.*\)"/\1/')"
+          # Refuse rather than hand the action an empty string, which it would
+          # silently resolve to something else.
+          if [ -z "$channel" ]; then
+            echo "::error::no channel found in rust-toolchain.toml"
+            exit 1
+          fi
+          echo "using pinned toolchain: ${channel}"
+          echo "channel=${channel}" >> "$GITHUB_OUTPUT"
+
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.rust.outputs.channel }}
+          components: clippy, rustfmt
 
       - name: Cache cargo registry and build
         uses: actions/cache@v6
@@ -156,3 +190,34 @@ jobs:
           files: visage_*.deb
           draft: false
           prerelease: ${{ steps.version.outputs.prerelease }}
+
+  clippy-latest:
+    # Non-blocking early warning for toolchain drift.
+    #
+    # The jobs above are pinned (rust-toolchain.toml), so a new clippy release
+    # can no longer halt the repository the way it did on 2026-08-24 — identical
+    # commit, green on 08-18, red on 08-24, purely because @stable floated.
+    #
+    # Pinning alone would trade that failure for a slower one: lints would
+    # accumulate unseen until someone bumped the pin. This job keeps the early
+    # warning without the blocking property. `continue-on-error` means it cannot
+    # fail the workflow, and it is not in the required status checks, so a red
+    # result here is information rather than a gate.
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libpam0g-dev libdbus-1-dev
+
+      - name: Install current stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Report the toolchain being tested
+        run: cargo clippy --version
+
+      - name: Clippy on current stable
+        run: cargo clippy --workspace -- -D warnings
