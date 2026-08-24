@@ -1,0 +1,28 @@
+# Pinned so CI cannot change behaviour without a commit.
+#
+# On 2026-08-24 the identical commit 63c9fbc passed CI on 08-18 and failed on
+# 08-24. Nothing had changed but the toolchain: the workflow resolved
+# `dtolnay/rust-toolchain@stable`, which floated onto a Rust whose clippy adds
+# `chunks_exact_to_as_chunks`. With `-D warnings` that is an instant failure on
+# untouched code, and it blocked every merge in the repository for six days
+# before anyone pushed and noticed.
+#
+# This version deliberately tracks what `nix develop` provides, so that a local
+# `cargo clippy` reproduces CI exactly. That mattered: the lint above could not
+# be reproduced locally while CI was pinned to a newer compiler, which is the
+# worst possible split.
+#
+# There is no guard coupling this file to the flake. If a nixpkgs bump moves the
+# devshell's rustc, re-sync by hand:
+#
+#     nix develop --command rustc --version
+#
+# Drift then makes CI *older* than local, so it surfaces on a developer's
+# machine before a push rather than only in CI — the safe direction.
+#
+# `.github/workflows/ci.yml` reads `channel` from this file; it is the single
+# source of truth. The clippy-latest job there watches current stable without
+# being able to block a merge.
+[toolchain]
+channel = "1.95.0"
+components = ["clippy", "rustfmt"]
