@@ -289,6 +289,17 @@ in
         Restart = "on-failure";
         RestartSec = 5;
 
+        # Bounds a stuck v4l2 capture on `systemctl stop|restart`. visaged
+        # handles SIGINT/SIGTERM at the runtime layer (issue #26); this covers
+        # the case where a capture is mid-flight and not promptly interruptible,
+        # e.g. after hibernate resume with a stale camera fd.
+        #
+        # This mirrors packaging/systemd/visaged.service, which has carried it
+        # since #26. It was missing here, so NixOS hosts fell back to systemd's
+        # 90s default — precisely the hang the fix removed on Debian. Found by
+        # tests/systemd_hardening_contract.rs.
+        TimeoutStopSec = 10;
+
         # Hardening (mirrors packaging/systemd/visaged.service)
         NoNewPrivileges = true;
         ProtectSystem = "strict";

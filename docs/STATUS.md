@@ -174,14 +174,54 @@ Items marked ✅ have been verified; items marked ⬜ require hardware not avail
 
 ## Test Coverage Summary
 
+### Unit tests
+
 | Crate | Tests | What they cover |
 |-------|-------|----------------|
-| `pam-visage` | 5 | PAM/syslog constant values, D-Bus error handling without daemon |
+| `pam-visage` | 8 | PAM/syslog constant values, timeout argument parsing, D-Bus error handling without daemon |
 | `visage-core` | 38 | Detection, alignment, recognition preprocessing, matching, liveness landmark stability |
-| `visage-hw` | 9 | Frame processing, CLAHE, dark frame detection, pixel conversion |
+| `visage-hw` | 13 | Frame processing, CLAHE, dark frame detection, pixel conversion, hardware quirk DB |
 | `visage-models` | 4 | SHA-256 verification: missing file, checksum mismatch, checksum match, missing directory |
-| `visaged` | 14 | Rate limiting, store roundtrip, encryption, corruption hardening |
-| **Total** | **70** | **Unit tests — no integration tests; no hardware tests** |
+| `visaged` | 18 | Rate limiting, store roundtrip, encryption, corruption hardening, session-bus config |
+| **Subtotal** | **81** | |
 
-Integration tests (camera + inference + daemon + PAM) are not present. They require physical
-hardware (IR camera) and are deferred to manual acceptance testing on Ubuntu 24.04.
+### Integration tests
+
+Added 2026-08-24, in `crates/visaged/tests/`. These exist because **both of the worst bugs in
+this project's history were structurally invisible to unit tests** — `success=end` (an invalid
+PAM keyword libpam silently treated as `ignore`, making face auth a no-op from v0.1.0 to
+v0.3.2) and the V4L2 format cache (#48). Neither was a logic error in a function; both were
+contracts *between artifacts*.
+
+| Test | Tests | What it guards |
+|------|-------|----------------|
+| `pam_control_contract` | 3 | The PAM control string is a valid libpam control, and identical across the Debian, Arch and NixOS packaging. Directly targets the `success=end` class. |
+| `systemd_hardening_contract` | 2 | Every hardening directive `threat-model.md` claims exists in **both** systemd definitions. Targets the #78 class — a documented control nothing enforced. |
+| `packaging_paths_contract` | 4 | Deb assets name real build targets, shipped source files exist, `ExecStart` matches the install path, PAM module path agrees across formats. |
+| `dbus_contract` | 3 | The interface the daemon serves is the one its three independently-compiled clients call. |
+| **Subtotal** | **12** | **Hermetic — no hardware, no root, no D-Bus, no models, no new dependencies** |
+
+**Total: 93 running tests**, plus 3 ignored.
+
+### Hardware tests
+
+`daemon_lifecycle` (3 tests, `#[ignore]`) launches the real daemon on a private session bus and
+drives it over D-Bus — bus-name registration, `Status`, `Verify` on an unenrolled user, and the
+property that matters most for PAM: that a client call **fails promptly rather than hanging**
+once the daemon is gone.
+
+`spawn_engine` opens the camera before serving D-Bus, so there is no headless path. Run on a
+machine with an IR camera:
+
+```bash
+cargo test -p visaged --test daemon_lifecycle -- --ignored --nocapture
+# VISAGE_TEST_CAMERA   (default /dev/video2)
+# VISAGE_TEST_MODEL_DIR (default /var/lib/visage/models)
+```
+
+⚠️ Stop a running production `visaged` first — it holds the capture device, so the test daemon
+cannot open it while that is live.
+
+Still absent: an end-to-end **recognition** test (enrol a face, verify it matches), which needs a
+face in front of the camera and is inherently interactive; and a NixOS VM test exercising the
+real PAM stack via `pamtester`.

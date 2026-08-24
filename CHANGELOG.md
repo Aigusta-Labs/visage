@@ -178,6 +178,34 @@
   `$USER`" and has been corrected too.
 
 ### Developer experience
+- **The first integration tests.** `crates/visaged/tests/` — 12 hermetic tests, plus 3
+  hardware tests that CI skips. Added because **both of the worst bugs in this project's
+  history were structurally invisible to unit tests**: `success=end`, an invalid PAM control
+  keyword that libpam silently treats as `ignore`, which made face auth a no-op on the
+  documented setup path from v0.1.0 to v0.3.2; and the V4L2 format cache (#48). Neither was a
+  logic error in a function — both were contracts *between artifacts*, which is the seam a
+  unit test cannot reach.
+
+  `pam_control_contract` asserts the control string is a valid libpam control and identical
+  across the Debian, Arch and NixOS packaging — it rejects `success=end` by name.
+  `systemd_hardening_contract` asserts every directive `threat-model.md` claims exists in
+  **both** systemd definitions, which is issue #78's class generalised.
+  `packaging_paths_contract` asserts the deb ships artifacts the workspace actually builds and
+  that `ExecStart` matches the install path. `dbus_contract` asserts the interface the daemon
+  serves is the one its three independently-compiled clients call — a rename there currently
+  compiles clean and breaks only at an authentication prompt.
+
+  Hermetic: no hardware, no root, no D-Bus, no models, **no new dependencies**, and no CI
+  changes — `cargo test --workspace` already picks them up. Each guard was proven to fail on
+  the defect it exists for before being committed.
+
+- **Fixed: `TimeoutStopSec` was missing from the NixOS module.** Found by the new
+  `systemd_hardening_contract`, which failed on the tree as it stood. The directive was added
+  for #26 to bound a stuck v4l2 capture on `systemctl stop|restart`, cutting a ~90s
+  post-hibernate hang to ~10s. It was present in the Debian unit only, so **NixOS hosts never
+  got the fix** — a running host reported systemd's 90s default, exactly the hang it was meant
+  to remove.
+
 
 - **Releases are cut from tags again, and cannot publish empty.** v0.3.4, v0.3.5
   and v0.3.6 shipped with no `.deb` attached (issue #75). The release job gated
