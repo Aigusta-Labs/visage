@@ -17,7 +17,7 @@ are active in the current codebase. Items marked **(roadmap)** are not yet prese
 | Threat | Mitigation | Status |
 |--------|------------|--------|
 | Brute force (repeated attempts) | Rate limiting + lockout after N failures | ✅ v0.3 — implemented |
-| Stolen photo (printed) | Passive liveness (landmark stability) + IR emitter support | ✅ v0.3 — landmark stability rejects static images; IR recommended |
+| Stolen photo (printed) | Passive liveness (landmark stability) + IR emitter support | ✅ v0.3 — landmark stability rejects static images; IR recommended. ⚠️ Verdict predates the 2026-08-17 hardware validation and is **not** revised on it; see the note below. |
 | Model tampering / substitution | Strict SHA-256 verification on download + daemon startup | ✅ v0.3 — implemented |
 | Replay attack (recorded video) | IR strobe pattern detection (odd/even frame analysis) | ⬜ Roadmap — IR emitter is on but no strobe challenge |
 | Unauthorized enrollment | Root-only enrollment via D-Bus policy | ✅ v0.3 — D-Bus policy restricts Enroll to root |
@@ -29,9 +29,28 @@ are active in the current codebase. Items marked **(roadmap)** are not yet prese
 
 | Threat | Mitigation | Status |
 |--------|------------|--------|
-| Static photo (printed or displayed) | Passive landmark stability: eye landmarks must shift between frames | ✅ v0.3 — `check_landmark_stability` in `visage-core` |
+| Static photo (printed or displayed) | Passive landmark stability: eye landmarks must shift between frames | ✅ v0.3 — `check_landmark_stability` in `visage-core`. ⚠️ See the note below. |
 | Static photo/mask in IR | Active challenge: random blink/turn request | ⬜ Roadmap |
 | Screen replay (video) | Motion parallax detection across frames | ⬜ Roadmap |
+
+> ⚠️ **These two ✅ verdicts have not been re-established against hardware, and one measurement contradicts them.**
+>
+> On 2026-08-17 the first hardware validation of passive liveness, on an ASUS Zenbook 14
+> UM3406HA with a Shinetech `3277:0055` IR module, found the metric **did not discriminate**:
+> a hand-held phone-screen spoof displaced **0.681 px**, *higher* than two genuine live
+> attempts (0.263, 0.670), so no threshold admits the live minimum while rejecting that
+> spoof — and the identity stage matched the same photo at **0.9013**.
+>
+> The verdicts above are deliberately **not** revised on that result, because the evidence
+> bar for changing a published threat-model claim has not been met: n=1 on the spoof side,
+> one sample of unestablished provenance, and printed paper untested. Revising requires the
+> full matrix in [`liveness-remaining-work.md`](liveness-remaining-work.md).
+>
+> They are annotated instead, so a ✅ here cannot be read as an unqualified claim that a
+> displayed photo is rejected. On the hardware we have measured, it is not. What the metric
+> still catches is a **rigidly mounted** photo (`liveness.rs` documents that case as
+> "<0.3 px, sensor noise only"). See the [hardware report](hardware-reports/asus-zenbook-um3406ha-3277-0055.md)
+> and [`STATUS.md`](STATUS.md).
 
 ### Tier 2 — Advanced (roadmap)
 

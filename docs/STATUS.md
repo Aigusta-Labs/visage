@@ -1,6 +1,6 @@
 # Visage v0.3 Release Status
 
-**Last updated:** 2026-07-07
+**Last updated:** 2026-08-24
 **Build state:** v0.3.6 shipped. All 6 implementation steps complete + model integrity enforcement + OSS governance + passive liveness detection. Since v0.3.3: fixed capture degradation on shared webcams (per-capture V4L2 format re-assert + in-process camera self-heal, #48); the IR emitter quirks DB now covers ASUS Zenbook 14 UM3406HA, Lenovo ThinkPad X1 Carbon Gen 9, Lenovo ThinkBook 14 MP2PQAZG, and HP OmniBook X Flip; NixOS flake build fixed; Dependabot security updates + a scheduled `cargo audit` enabled; contribution review reframed problem-first (ADR 010 §9). v0.3.6 added a security hardening batch: in-process root checks on the privileged D-Bus methods (`Enroll`/`RemoveModel`/`ListModels`), the `VISAGE_SESSION_BUS` flag and passive liveness now fail closed, `zbus` pinned to the tokio executor (drops the `async-io` stack), and an AES-256-GCM known-answer + blob-format test. End-to-end tested on Ubuntu 24.04.4 LTS.
 
 ⚠️ **Passive liveness had its first hardware spoof validation on 2026-08-17, and it did not pass.** On an ASUS Zenbook 14 UM3406HA with a Shinetech `3277:0055` IR module, a hand-held phone-screen spoof produced landmark displacement (**0.681 px**) *higher* than two genuine live attempts (**0.263**, 0.670), so no threshold separates them — and the identity stage matched that photo at **0.9013**. Live users were falsely rejected **13–17%** of the time at the default 0.8 px floor (20/23–20/24 live pass as of 2026-08-17 13:43 local), so the ≥ 9-in-10 reliability criterion is **not met**. Sample is n=1 on the spoof side, so `threat-model.md`'s claims are **not** yet revised. **Resolved on that host by setting `liveness.minDisplacement = 0.1`** — 15 attempts, 12 pass, 0 liveness rejections; both `sudo` and lock-screen face auth then verified end to end by the operator. See [`liveness-remaining-work.md`](liveness-remaining-work.md) and the [hardware report](hardware-reports/asus-zenbook-um3406ha-3277-0055.md).
@@ -31,13 +31,14 @@ Items marked ✅ have been verified; items marked ⬜ require hardware not avail
 
 - [x] `visage enroll --label default` — captures 5 frames, confidence-weighted averaging, stores encrypted model, returns UUID
 - [x] `visage verify` — matches enrolled face, exits 0 (similarity 0.97 with v0.3.0 enrollment; 0.83 with legacy plaintext enrollment)
-- [ ] `visage verify` — returns exit 1 on no-match (different person or covered camera) — requires interactive test
-- [ ] `visage verify` completes in <500ms (warm daemon, good IR illumination) — 1.4s on USB webcam/CPU; needs IR+GPU test
-- [ ] 10 consecutive `sudo echo test` attempts: ≥9 succeed via face recognition — requires interactive test
+- [ ] `visage verify` — returns exit 1 on no-match (different person or covered camera). **Partially evidenced 2026-08-17:** PAM logged `no match for user 'cc'` and fell through to `pam_unix` with `res=success`. The CLI's own exit code was not separately recorded, so this stays open.
+- [ ] `visage verify` completes in <500ms (warm daemon, good IR illumination). **Not met.** 1.4s on USB webcam/CPU; on the `3277:0055` IR module, median **2273 ms** / max **2329 ms** over 10 runs. Still needs an IR+GPU path to be plausible.
+- [ ] 10 consecutive `sudo echo test` attempts: ≥9 succeed via face recognition. **Not met on `3277:0055`.** At the default 0.8 liveness floor: **20/23–20/24 = 83–87%**. After lowering `liveness.minDisplacement` to 0.1: 15 attempts, **12 pass, 0 liveness rejections** — the 3 non-passes were `no face detected in any captured frame`, visually confirmed as nobody in front of the camera. Identity matching never failed across 12 attempts (0.4609–0.9847 against a 0.40 threshold).
+  ⚠️ The **10/10 consecutive `sudo`** figure in the hardware report is **Howdy 2.6.1 on Ubuntu** — prior art on the same laptop, *not* Visage. Do not read it as a Visage result.
 
 ### Safety Properties (most critical)
 
-- [ ] Cover camera → `sudo` falls back to password within 3 seconds (PAM timeout) — requires interactive test
+- [ ] Cover camera → `sudo` falls back to password within 3 seconds (PAM timeout). **Fallback demonstrated 2026-08-17** (`no match` → `grantors=pam_unix`, `res=success`), but the 3-second bound was never separately timed. Note the PAM D-Bus timeout is now configurable and was raised to **6s** on that host, because measured verify latency left under 700 ms of headroom against the old 3s default.
 - [x] Kill visaged → `sudo` falls back to password within 3 seconds
 - [x] Restart daemon → re-enroll not required (data persists in SQLite)
 - [x] No output in terminal on PAM failure — only in `/var/log/auth.log`
