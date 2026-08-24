@@ -333,8 +333,18 @@ fn bytes_to_embedding_strict(bytes: &[u8]) -> Result<Vec<f32>, StoreError> {
     }
 
     let mut values = Vec::with_capacity(EMBEDDING_DIM);
-    for chunk in bytes.chunks_exact(4) {
-        let arr: [u8; 4] = chunk
+    // Indexed rather than `chunks_exact(4)`: clippy 1.98 added
+    // `chunks_exact_to_as_chunks`, which fires on a constant chunk size and
+    // suggests `as_chunks::<4>()`. That API is far newer than this crate's
+    // declared MSRV of 1.75, and `#[allow(clippy::chunks_exact_to_as_chunks)]`
+    // would itself trip `unknown_lints` on any clippy older than 1.98. Indexing
+    // is correct on every toolchain and couples to no lint name.
+    //
+    // The slice bounds cannot panic: `bytes.len() == EMBEDDING_BYTE_LEN` is
+    // checked above, and `EMBEDDING_BYTE_LEN == EMBEDDING_DIM * 4`.
+    for i in 0..EMBEDDING_DIM {
+        let start = i * 4;
+        let arr: [u8; 4] = bytes[start..start + 4]
             .try_into()
             .map_err(|_| StoreError::InvalidBlob(bytes.len()))?;
         let v = f32::from_le_bytes(arr);
