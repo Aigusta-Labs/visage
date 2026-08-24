@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     branches: [main]
 
@@ -81,7 +82,16 @@ jobs:
   release:
     runs-on: ubuntu-24.04
     needs: build-deb
-    if: github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release:')
+    # Tag-triggered, deliberately.
+    #
+    # This previously gated on the head commit message starting with "release:".
+    # That stopped matching when the repo adopted Conventional Commits
+    # ("chore(release): 0.3.4"), and nothing reported a failure: v0.3.4, v0.3.5
+    # and v0.3.6 were all published by hand with no .deb attached, and each one
+    # looked correct. A commit-message convention should never be load-bearing
+    # for a release. A tag is explicit and no convention can silently sever it.
+    # See issue #75.
+    if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
     steps:
@@ -92,16 +102,57 @@ jobs:
         with:
           name: visage-deb
 
-      - name: Get version
+      - name: Resolve version and verify it matches the tag
         id: version
-        run: echo "version=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')" >> "$GITHUB_OUTPUT"
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          manifest="$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')"
+          if [ "$tag" != "$manifest" ]; then
+            echo "::error::tag v${tag} does not match Cargo.toml version ${manifest}"
+            exit 1
+          fi
+          echo "version=${tag}" >> "$GITHUB_OUTPUT"
+          # SemVer: a pre-release is a version carrying a hyphenated suffix.
+          case "$tag" in
+            *-*) echo "prerelease=true"  >> "$GITHUB_OUTPUT" ;;
+            *)   echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Extract this version's changelog section
+        run: |
+          set -euo pipefail
+          v="${{ steps.version.outputs.version }}"
+          awk -v tag="v${v}" '
+            $1 == "##" && $2 == tag { f = 1; next }
+            f && $1 == "##"         { exit }
+            f                       { print }
+          ' CHANGELOG.md > RELEASE_NOTES.md
+          if [ ! -s RELEASE_NOTES.md ]; then
+            echo "::error::CHANGELOG.md has no '## v${v}' section"
+            exit 1
+          fi
+
+      - name: Verify a .deb is actually present
+        run: |
+          set -euo pipefail
+          found=0
+          for deb in visage_*.deb; do
+            [ -e "$deb" ] || continue
+            found=1
+            printf '  %s (%s bytes)\n' "$deb" "$(stat -c %s "$deb")"
+          done
+          if [ "$found" -eq 0 ]; then
+            echo "::error::no visage_*.deb to attach — refusing to publish an assetless release"
+            exit 1
+          fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: v${{ steps.version.outputs.version }}
+          tag_name: ${{ github.ref_name }}
           name: Visage v${{ steps.version.outputs.version }}
-          body_path: CHANGELOG.md
+          body_path: RELEASE_NOTES.md
           files: visage_*.deb
           draft: false
-          prerelease: true
+          prerelease: ${{ steps.version.outputs.prerelease }}
