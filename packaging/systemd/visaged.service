@@ -27,6 +27,14 @@ DeviceAllow=char-video4linux rw
 ReadWritePaths=/var/lib/visage
 CapabilityBoundingSet=
 SystemCallArchitectures=native
+# threat-model.md justifies MemoryDenyWriteExecute=false by stating the daemon
+# "has no network access, no inbound connections". Nothing enforced that until
+# now (issue #78), so the compensating control for the largest documented
+# hardening gap did not exist. visaged makes no network calls — the only HTTP
+# client in the workspace is `ureq`, used solely by visage-cli for `visage
+# setup` model downloads, which is a separate process and unaffected. D-Bus is
+# an AF_UNIX filesystem socket and is not namespaced by PrivateNetwork.
+PrivateNetwork=true
 MemoryDenyWriteExecute=false
 
 [Install]
