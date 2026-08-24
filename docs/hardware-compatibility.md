@@ -103,6 +103,7 @@ VID:PID to the correct control bytes for each known device.
 | Device | VID:PID | Status |
 |--------|---------|--------|
 | ASUS Zenbook 14 UM3406HA | `04f2:b6d9` | ✅ Verified on hardware |
+| Lenovo ThinkPad P14s Gen 2a 21A0000RMX | `04f2:b6d0` | ✅ Verified on hardware (community, [#76](https://github.com/sovren-software/visage/pull/76)) |
 | Lenovo ThinkPad X1 Carbon Gen 9 20XW00FPUS | `174f:2454` | ✅ Verified on hardware |
 | Lenovo ThinkBook 14 MP2PQAZG | `30c9:00c2` | ✅ Verified on hardware |
 | HP OmniBook X Flip | `30c9:0120` | ✅ Verified on hardware |
@@ -124,7 +125,36 @@ lit/unlit every frame. A dark-frame *count* cannot distinguish that from an expo
 1. Run `visage discover` to find your camera's VID:PID
 2. Use `linux-enable-ir-emitter configure` or UVC descriptor analysis to find the
    control bytes (see [contrib/hw/README.md](../contrib/hw/README.md))
-3. Create `contrib/hw/{vid}-{pid}.toml` and submit a PR
+3. Create `contrib/hw/{vid}-{pid}.toml`
+4. **Register it in `crates/visage-hw/src/quirks.rs`.** Quirk files are embedded at
+   compile time with `include_str!` — there is no runtime file loading, so **dropping a
+   `.toml` into `contrib/hw/` does nothing on its own.** Two lines:
+
+   ```rust
+   const QUIRK_04F2_B6D0: &str = include_str!("../../../contrib/hw/04f2-b6d0.toml");
+   //  …then add it to QUIRK_SOURCES:
+   ("04f2-b6d0.toml", QUIRK_04F2_B6D0),
+   ```
+
+5. **Verify the quirk is doing the work, not another tool.** Disable any external emitter
+   activation tool (`linux-enable-ir-emitter` and similar) and **power-cycle the laptop or the
+   camera** to clear residual control bytes, then test. A camera left illuminated by something
+   else will make a non-working quirk look correct, and the contribution ships inert. This is a
+   real negative control — it is what made [#76](https://github.com/sovren-software/visage/pull/76)
+   trustworthy, and @rampa3 suggested documenting it in
+   [#85](https://github.com/sovren-software/visage/issues/85).
+6. Run `cargo test -p visage-hw quirks::` and submit a PR
+
+⚠️ **Step 4 is the one that is easy to miss, and its failure is silent.** `quirk_db()`
+skips a malformed or unregistered quirk rather than panicking — the daemon authenticates
+logins, so one bad contribution must not stop it starting. The cost is that at runtime a
+camera with an unregistered quirk is **indistinguishable from a camera with no quirk**: no
+error, no crash, the emitter simply never fires. The tests in step 5 exist precisely to
+catch that before it ships.
+
+The full field reference, the registration step and what each test catches are in
+[contrib/hw/README.md](../contrib/hw/README.md), which is the authoritative version of this
+workflow.
 
 ---
 
