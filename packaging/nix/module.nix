@@ -298,6 +298,11 @@ in
         ReadWritePaths = [ "/var/lib/visage" ];
         CapabilityBoundingSet = "";
         SystemCallArchitectures = "native";
+        # Enforces the "no network access" claim threat-model.md relies on to
+        # justify MemoryDenyWriteExecute=false. See issue #78 and the comment
+        # in packaging/systemd/visaged.service. visaged makes no network calls;
+        # `ureq` lives only in visage-cli, for `visage setup`.
+        PrivateNetwork = true;
         MemoryDenyWriteExecute = false;
       };
     };
