@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.4.0-rc.1 — 2026-08-24
+
 ### Added
 
 - **`visage onboard` — one command from nothing to working face auth.** Downloads
